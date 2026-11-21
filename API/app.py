@@ -24,15 +24,11 @@ app.config['SQLALCHEMY_DATABASE_URI'] = URL.create(
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
 
-# La base de datos se crea con logical_model.sql (incluye CHECK, vistas e índices),
-# por eso aquí NO se usa db.create_all(): los modelos solo "mapean" tablas existentes.
-
-
 # =====================================================================
 # MODELOS (una clase por tabla)
 # =====================================================================
 
-# ---------- Catálogo ----------
+# ---------- Catalogo ----------
 class Prenda(db.Model):
     __tablename__ = 'prenda'
     id_prenda = db.Column(db.Integer, primary_key=True)
@@ -55,7 +51,7 @@ class PrecioServicio(db.Model):
     precio_maximo = db.Column(db.Numeric(8, 2), nullable=False)
 
 
-# ---------- Operación ----------
+# ---------- Operacion ----------
 class Cliente(db.Model):
     __tablename__ = 'cliente'
     id_cliente = db.Column(db.Integer, primary_key=True)
@@ -98,12 +94,12 @@ class Entrega(db.Model):
     id_pedido = db.Column(db.Integer, db.ForeignKey('pedido.id_pedido'), nullable=False)
     fecha_hora_entrega = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
     observaciones_entrega = db.Column(db.String(255))
-    motivo_deuda = db.Column(db.String(255))   # si no es NULL, se entregó con deuda
+    motivo_deuda = db.Column(db.String(255))   # si no es NULL, se entrego con deuda
 
 
 class DetalleEntrega(db.Model):
     __tablename__ = 'detalle_entrega'
-    # Una línea de pedido solo se puede entregar una vez -> PK = id_detalle
+    # Una linea de pedido solo se puede entregar una vez -> PK = id_detalle
     id_detalle = db.Column(db.Integer, primary_key=True)
     id_entrega = db.Column(db.Integer, nullable=False)
     id_pedido = db.Column(db.Integer, nullable=False)
@@ -131,7 +127,7 @@ class Pago(db.Model):
 # =====================================================================
 class BaseSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        include_fk = True        # incluye las llaves foráneas (id_cliente, id_pedido...)
+        include_fk = True        # incluye las llaves foraneas (id_cliente, id_pedido...)
         load_instance = True     # load() devuelve objetos del modelo
 
 
@@ -171,8 +167,7 @@ class PedidoSchema(BaseSchema):
 class DetallePedidoSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
         model = DetallePedido
-        dump_only = ('id_detalle',)
-
+        dump_only = ('id_detalle', 'id_pedido')
 
 class EntregaSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
@@ -183,7 +178,7 @@ class EntregaSchema(BaseSchema):
 class DetalleEntregaSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
         model = DetalleEntrega
-
+        dump_only = ('id_detalle', 'id_entrega', 'id_pedido')
 
 class PagoSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
@@ -200,6 +195,7 @@ class PagoSchema(BaseSchema):
 # =====================================================================
 @app.errorhandler(ValidationError)
 def handle_validation(e):
+    db.session.rollback()
     return jsonify({'error': e.messages}), 400
 
 
@@ -207,14 +203,51 @@ def handle_validation(e):
 def handle_integrity(e):
     db.session.rollback()
     # Duplicados, FK (p. ej. borrar algo que tiene registros hijos) o CHECK incumplido
-    return jsonify({'error': 'Operación no permitida por las reglas de la base de datos',
+    return jsonify({'error': 'Operacion no permitida por las reglas de la base de datos',
                     'detalle': str(e.orig)}), 409
 
 
 # =====================================================================
-# RUTAS CRUD (mismo patrón para cada tabla)
+# RUTAS CRUD (mismo patron para cada tabla)
 # =====================================================================
-def register_crud(path, model, schema_cls):
+def validar_linea(det):
+    """Reglas de una linea de pedido (FR-07, FR-08). Recibe un DetallePedido."""
+    ps = db.session.get(PrecioServicio, det.id_precio)
+    if ps is None:
+        raise ValidationError('El precio de servicio no existe', 'id_precio')
+    if not (ps.precio_minimo <= det.precio_acordado <= ps.precio_maximo):
+        raise ValidationError(
+            f'precio_acordado debe estar entre {ps.precio_minimo} y {ps.precio_maximo}',
+            'precio_acordado')
+    ped = db.session.get(Pedido, det.id_pedido)
+    if ped is None:
+        raise ValidationError('El pedido no existe', 'id_pedido')
+    if ped.fecha_hora_recepcion and det.fecha_entrega_estimada < ped.fecha_hora_recepcion.date():
+        raise ValidationError('La fecha estimada es anterior a la recepcion',
+                              'fecha_entrega_estimada')
+
+def validar_pago(p):
+    r = consultar_vista('SELECT total_neto FROM v_pedido_resumen WHERE id_pedido = :id',
+                        id=p.id_pedido)
+    if not r:
+        raise ValidationError('El pedido no existe', 'id_pedido')
+    otros = db.session.query(db.func.coalesce(db.func.sum(Pago.monto), 0)).filter(
+        Pago.id_pedido == p.id_pedido, Pago.id_pago != p.id_pago).scalar()
+    if otros + p.monto > r[0]['total_neto']:
+        raise ValidationError('La suma de pagos supera el total del pedido', 'monto')
+
+def no_borrar_ultima_linea(det):
+    n = DetallePedido.query.filter_by(id_pedido=det.id_pedido).count()
+    if n <= 1:
+        raise ValidationError('El pedido debe conservar al menos una linea', 'detalles')
+
+
+def no_borrar_ultima_linea_entrega(de):
+    n = DetalleEntrega.query.filter_by(id_entrega=de.id_entrega).count()
+    if n <= 1:
+        raise ValidationError('La entrega debe conservar al menos una linea', 'lineas')
+
+def register_crud(path, model, schema_cls, validar=None, permitir_crear=True, validar_eliminar=None):
     schema = schema_cls()
     schemas = schema_cls(many=True)
     name = model.__tablename__
@@ -234,6 +267,8 @@ def register_crud(path, model, schema_cls):
 
     def crear():
         obj = schema.load(request.get_json(), session=db.session)
+        if validar:
+            validar(obj)
         db.session.add(obj)
         db.session.commit()
         db.session.refresh(obj)                         # trae los valores por defecto del servidor
@@ -244,6 +279,8 @@ def register_crud(path, model, schema_cls):
         if not obj:
             return jsonify({'error': 'No encontrado'}), 404
         schema.load(request.get_json(), instance=obj, partial=True, session=db.session)
+        if validar:
+            validar(obj)
         db.session.commit()
         return jsonify(schema.dump(obj))
 
@@ -251,12 +288,15 @@ def register_crud(path, model, schema_cls):
         obj = db.session.get(model, item_id)
         if not obj:
             return jsonify({'error': 'No encontrado'}), 404
+        if validar_eliminar:
+            validar_eliminar(obj)
         db.session.delete(obj)
         db.session.commit()
         return jsonify({'message': 'Eliminado correctamente'})
 
     app.add_url_rule(f'/{path}', f'{name}_listar', listar, methods=['GET'])
-    app.add_url_rule(f'/{path}', f'{name}_crear', crear, methods=['POST'])
+    if permitir_crear:
+        app.add_url_rule(f'/{path}', f'{name}_crear', crear, methods=['POST'])
     app.add_url_rule(f'/{path}/<int:item_id>', f'{name}_obtener', obtener, methods=['GET'])
     app.add_url_rule(f'/{path}/<int:item_id>', f'{name}_actualizar', actualizar, methods=['PUT'])
     app.add_url_rule(f'/{path}/<int:item_id>', f'{name}_eliminar', eliminar, methods=['DELETE'])
@@ -266,12 +306,84 @@ register_crud('prendas', Prenda, PrendaSchema)
 register_crud('servicios', Servicio, ServicioSchema)
 register_crud('precios-servicio', PrecioServicio, PrecioServicioSchema)
 register_crud('clientes', Cliente, ClienteSchema)
-register_crud('pedidos', Pedido, PedidoSchema)
-register_crud('detalles-pedido', DetallePedido, DetallePedidoSchema)
-register_crud('entregas', Entrega, EntregaSchema)
-register_crud('detalles-entrega', DetalleEntrega, DetalleEntregaSchema)
-register_crud('pagos', Pago, PagoSchema)
+register_crud('pedidos', Pedido, PedidoSchema, permitir_crear=False)
+register_crud('detalles-pedido', DetallePedido, DetallePedidoSchema, validar=validar_linea, validar_eliminar=no_borrar_ultima_linea)
+register_crud('entregas', Entrega, EntregaSchema, permitir_crear=False)
+register_crud('detalles-entrega', DetalleEntrega, DetalleEntregaSchema, validar_eliminar=no_borrar_ultima_linea_entrega)
+register_crud('pagos', Pago, PagoSchema, validar=validar_pago)
 
+@app.route('/pedidos', methods=['POST'])
+def crear_pedido_completo():
+    data = request.get_json() or {}
+    lineas = data.pop('detalles', None)
+    if not isinstance(lineas, list) or len(lineas) == 0:
+        raise ValidationError('El pedido debe tener al menos una linea', 'detalles')
+    pedido = PedidoSchema().load(data, session=db.session)
+    db.session.add(pedido)
+    db.session.flush()
+    db.session.refresh(pedido)          # trae fecha_hora_recepcion del servidor
+
+    detalles = []
+    for l in lineas:
+        l['id_pedido'] = pedido.id_pedido
+        det = DetallePedidoSchema().load(l, session=db.session)
+        validar_linea(det)
+        db.session.add(det)
+        detalles.append(det)
+
+    db.session.commit()
+    return jsonify({
+        'pedido': PedidoSchema().dump(pedido),
+        'detalles': DetallePedidoSchema(many=True).dump(detalles),
+    }), 201
+
+@app.route('/pedidos/<int:id_pedido>/entregas', methods=['POST'])
+def registrar_entrega(id_pedido):
+    data = request.get_json() or {}
+    lineas = data.get('lineas')
+    if not isinstance(lineas, list) or len(lineas) == 0:
+        return jsonify({'error': 'La entrega debe incluir al menos una línea'}), 400
+    if not all(isinstance(x, int) and not isinstance(x, bool) for x in lineas):
+        return jsonify({'error': 'lineas debe contener ids enteros'}), 400
+    if len(set(lineas)) != len(lineas):
+        return jsonify({'error': 'Hay líneas repetidas en la entrega'}), 400
+    pago = data.get('pago')
+    if pago is not None and not isinstance(pago, dict):
+        return jsonify({'error': 'pago debe ser un objeto'}), 400
+
+    pedido = db.session.get(Pedido, id_pedido, with_for_update=True)
+    if not pedido:
+        return jsonify({'error': 'Pedido no encontrado'}), 404
+
+    entrega = Entrega(id_pedido=id_pedido,
+                      observaciones_entrega=data.get('observaciones_entrega'))
+    db.session.add(entrega)
+    db.session.flush()
+
+    for id_det in lineas:   # PK y FK compuestas rechazan repetidas o de otro pedido (409)
+        db.session.add(DetalleEntrega(id_entrega=entrega.id_entrega,
+                                      id_detalle=id_det, id_pedido=id_pedido))
+
+    if pago:
+        pago['id_pedido'] = id_pedido
+        pago['tipo_pago'] = 'saldo_final'
+        db.session.add(PagoSchema().load(pago, session=db.session))
+    db.session.flush()
+
+    r = consultar_vista('SELECT saldo_total_pendiente, deuda_exigible '
+                        'FROM v_pedido_resumen WHERE id_pedido = :id', id=id_pedido)[0]
+    if r['saldo_total_pendiente'] < 0:
+        db.session.rollback()
+        return jsonify({'error': 'Los pagos superan el total del pedido'}), 400
+    if r['deuda_exigible'] > 0:
+        motivo = (data.get('motivo_deuda') or '').strip()
+        if not motivo:
+            db.session.rollback()
+            return jsonify({'error': 'Se requiere motivo_deuda'}), 400
+        entrega.motivo_deuda = motivo
+
+    db.session.commit()
+    return jsonify(EntregaSchema().dump(entrega)), 201
 
 # =====================================================================
 # RUTAS DE SOLO LECTURA sobre las VISTAS
