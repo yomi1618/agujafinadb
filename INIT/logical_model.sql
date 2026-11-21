@@ -208,32 +208,47 @@ SELECT
   GREATEST(t.`monto_pagado` - (t.`subtotal_entregado` - t.`descuento_entregado`), 0) AS `saldo_favor`
 FROM (
   SELECT
-    p.`id_pedido`,
-    p.`id_cliente`,
-    COALESCE(d.`lineas_total`, 0) AS `lineas_total`,
-    COALESCE(d.`lineas_entregadas`, 0) AS `lineas_entregadas`,
-    COALESCE(d.`subtotal`, 0) AS `subtotal`,
-    ROUND(COALESCE(d.`subtotal`, 0) * p.`descuento_porcentaje` / 100, 2) AS `descuento_monto`,
-    COALESCE(d.`subtotal_entregado`, 0) AS `subtotal_entregado`,
-    ROUND(COALESCE(d.`subtotal_entregado`, 0) * p.`descuento_porcentaje` / 100, 2) AS `descuento_entregado`,
-    COALESCE(g.`pagado`, 0) AS `monto_pagado`
-  FROM `pedido` p
-  LEFT JOIN (
+    b.`id_pedido`,
+    b.`id_cliente`,
+    b.`lineas_total`,
+    b.`lineas_entregadas`,
+    b.`subtotal`,
+    b.`descuento_monto`,
+    b.`subtotal_entregado`,
+    CASE
+      WHEN b.`subtotal` = 0 THEN 0.00
+      WHEN b.`lineas_entregadas` = b.`lineas_total` THEN b.`descuento_monto`
+      ELSE ROUND(b.`descuento_monto` * (b.`subtotal_entregado` / b.`subtotal`), 2)
+    END AS `descuento_entregado`,
+    b.`monto_pagado`
+  FROM (
     SELECT
-      dp.`id_pedido`,
-      COUNT(*) AS `lineas_total`,
-      COUNT(ed.`id_detalle`) AS `lineas_entregadas`,
-      SUM(dp.`precio_acordado`) AS `subtotal`,
-      SUM(CASE WHEN ed.`id_detalle` IS NOT NULL THEN dp.`precio_acordado` ELSE 0 END) AS `subtotal_entregado`
-    FROM `detalle_pedido` dp
-    LEFT JOIN `entrega_detalle` ed ON ed.`id_detalle` = dp.`id_detalle`
-    GROUP BY dp.`id_pedido`
-  ) d ON d.`id_pedido` = p.`id_pedido`
-  LEFT JOIN (
-    SELECT `id_pedido`, SUM(`monto`) AS `pagado`
-    FROM `pago`
-    GROUP BY `id_pedido`
-  ) g ON g.`id_pedido` = p.`id_pedido`
+      p.`id_pedido`,
+      p.`id_cliente`,
+      COALESCE(d.`lineas_total`, 0) AS `lineas_total`,
+      COALESCE(d.`lineas_entregadas`, 0) AS `lineas_entregadas`,
+      COALESCE(d.`subtotal`, 0) AS `subtotal`,
+      ROUND(COALESCE(d.`subtotal`, 0) * p.`descuento_porcentaje` / 100, 2) AS `descuento_monto`,
+      COALESCE(d.`subtotal_entregado`, 0) AS `subtotal_entregado`,
+      COALESCE(g.`pagado`, 0) AS `monto_pagado`
+    FROM `pedido` p
+    LEFT JOIN (
+      SELECT
+        dp.`id_pedido`,
+        COUNT(*) AS `lineas_total`,
+        COUNT(ed.`id_detalle`) AS `lineas_entregadas`,
+        SUM(dp.`precio_acordado`) AS `subtotal`,
+        SUM(CASE WHEN ed.`id_detalle` IS NOT NULL THEN dp.`precio_acordado` ELSE 0 END) AS `subtotal_entregado`
+      FROM `detalle_pedido` dp
+      LEFT JOIN `entrega_detalle` ed ON ed.`id_detalle` = dp.`id_detalle`
+      GROUP BY dp.`id_pedido`
+    ) d ON d.`id_pedido` = p.`id_pedido`
+    LEFT JOIN (
+      SELECT `id_pedido`, SUM(`monto`) AS `pagado`
+      FROM `pago`
+      GROUP BY `id_pedido`
+    ) g ON g.`id_pedido` = p.`id_pedido`
+  ) b
 ) t;
 
 -- Deuda historica por cliente: suma de la deuda exigible (prendas entregadas
