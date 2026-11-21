@@ -239,7 +239,7 @@ FROM (
 -- menos pagos) de todos sus pedidos, sin importar si el pedido esta completo.
 -- Alimenta la alerta de deuda (FR-03) y el reporte de clientes con saldo (FR-19):
 
-CREATE OR REPLACE VIEW `v_cliente_saldo` AS
+CREATE OR REPLACE VIEW `v_cliente_deuda` AS
 SELECT
   c.`id_cliente`, c.`tipo_cliente`, c.`nombre`, c.`apellido`, c.`telefono`,
   COALESCE(SUM(r.`deuda_exigible`), 0) AS `saldo_pendiente`
