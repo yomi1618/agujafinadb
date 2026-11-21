@@ -8,7 +8,7 @@ USE `afdb`;
 -- prendas
 
 INSERT INTO `prenda` (`tipo_prenda`) VALUES
-  ('Pantalón'),
+  ('Pantalon'),
   ('Chaqueta'),
   ('Camisa');
 
@@ -24,7 +24,7 @@ INSERT INTO `servicio` (`nombre_servicio`) VALUES
 
 -- ids en variables para no depender del orden del AUTO_INCREMENT
 
-SET @pantalon = (SELECT `id_prenda` FROM `prenda` WHERE `tipo_prenda` = 'Pantalón');
+SET @pantalon = (SELECT `id_prenda` FROM `prenda` WHERE `tipo_prenda` = 'Pantalon');
 SET @chaqueta = (SELECT `id_prenda` FROM `prenda` WHERE `tipo_prenda` = 'Chaqueta');
 SET @camisa   = (SELECT `id_prenda` FROM `prenda` WHERE `tipo_prenda` = 'Camisa');
 
@@ -40,7 +40,7 @@ SET @virar   = (SELECT `id_servicio` FROM `servicio` WHERE `nombre_servicio` = '
 INSERT INTO `precio_servicio`
   (`id_prenda`, `id_servicio`, `descripcion_arreglo`, `precio_minimo`, `precio_maximo`)
 VALUES
-  -- Pantalón
+  -- Pantalon
   (@pantalon, @bastas,  '20-24',                          5.00,  7.00),
   (@pantalon, @bastas,  '>24',                            8.00, 10.00),
   (@pantalon, @entalle, 'Cintura',                        8.00, 10.00),
@@ -50,16 +50,16 @@ VALUES
   (@pantalon, @entalle, 'Basta',                          8.00, 10.00),
   (@pantalon, @entalle, 'Completo',                      15.00, 20.00),
   (@pantalon, @cambio,  'Cierre',                         6.00,  8.00),
-  (@pantalon, @cambio,  'Botón por unidad (con repuesto)', 0.50,  1.00),
-  (@pantalon, @cambio,  'Botón por unidad (sin repuesto)', 1.50,  2.00),
+  (@pantalon, @cambio,  'Boton por unidad (con repuesto)', 0.50,  1.00),
+  (@pantalon, @cambio,  'Boton por unidad (sin repuesto)', 1.50,  2.00),
 
   -- Chaqueta
   (@chaqueta, @largo,   'Cuerpo',                        25.00, 30.00),
   (@chaqueta, @largo,   'Mangas',                        25.00, 30.00),
   (@chaqueta, @entalle, 'Hombros',                       20.00, 25.00),
   (@chaqueta, @entalle, 'Cuerpo',                        30.00, 35.00),
-  (@chaqueta, @cambio,  'Botón por unidad (con repuesto)', 1.00,  1.50),
-  (@chaqueta, @cambio,  'Botón por unidad (sin repuesto)', 1.50,  2.00),
+  (@chaqueta, @cambio,  'Boton por unidad (con repuesto)', 1.00,  1.50),
+  (@chaqueta, @cambio,  'Boton por unidad (sin repuesto)', 1.50,  2.00),
   (@chaqueta, @ojales,  'Por unidad',                     1.00,  1.50),
 
   -- Camisa
@@ -68,6 +68,6 @@ VALUES
   (@camisa,   @entalle, 'Hombros',                        8.00, 10.00),
   (@camisa,   @entalle, 'Cuerpo',                        10.00, 12.00),
   (@camisa,   @virar,   'Cuello',                         6.00,  8.00),
-  (@camisa,   @virar,   'Puños',                          6.00,  8.00),
+  (@camisa,   @virar,   'Punios',                          6.00,  8.00),
   (@camisa,   @cambio,  'Cuello',                        10.00, 12.00),
-  (@camisa,   @cambio,  'Puños',                         10.00, 12.00);
+  (@camisa,   @cambio,  'Punios',                         10.00, 12.00);
