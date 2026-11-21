@@ -202,9 +202,10 @@ SELECT
   t.`descuento_monto`,
   t.`subtotal` - t.`descuento_monto` AS `total_neto`,
   t.`monto_pagado`,
-  t.`subtotal` - t.`descuento_monto` - t.`monto_pagado` AS `saldo_pendiente`,
+  t.`subtotal` - t.`descuento_monto` - t.`monto_pagado` AS `saldo_total_pendiente`,
   t.`subtotal_entregado` - t.`descuento_entregado` AS `total_entregado_neto`,
-  GREATEST(t.`subtotal_entregado` - t.`descuento_entregado` - t.`monto_pagado`, 0) AS `deuda_exigible`
+  GREATEST(t.`subtotal_entregado` - t.`descuento_entregado` - t.`monto_pagado`, 0) AS `deuda_exigible`,
+  GREATEST(t.`monto_pagado` - (t.`subtotal_entregado` - t.`descuento_entregado`), 0) AS `saldo_favor`
 FROM (
   SELECT
     p.`id_pedido`,
