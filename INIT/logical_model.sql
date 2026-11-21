@@ -51,7 +51,7 @@ CREATE TABLE `pedido` (
   `estado` varchar(10) NOT NULL DEFAULT 'activa' COMMENT 'CHECK: activa o entregada',
   `descuento_porcentaje` decimal(4,2) NOT NULL DEFAULT 0 COMMENT 'CHECK: 0, o entre 5 y 10',
   `observaciones` varchar(255),
-  `motivo_excepcion_entrega` varchar(255)
+  `motivo_excepcion_entrega` varchar(255),
   `observaciones_entrega` varchar(255) COMMENT 'detalle de las prendas entregadas cuando no se entrega todo el pedido'
 );
 
@@ -196,6 +196,7 @@ FROM (
 
 -- Deuda historica por cliente (suma de saldos pendientes de todos sus pedidos).
 -- Alimenta la alerta de deuda (FR-03) y el reporte de clientes con saldo (FR-19):
+
 CREATE OR REPLACE VIEW `v_cliente_saldo` AS
 SELECT
   c.`id_cliente`, c.`tipo_cliente`, c.`nombre`, c.`apellido`, c.`telefono`,
