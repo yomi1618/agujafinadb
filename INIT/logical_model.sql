@@ -23,14 +23,12 @@ CREATE TABLE `cliente` (
 
 CREATE TABLE `prenda` (
   `id_prenda` int PRIMARY KEY AUTO_INCREMENT,
-  `tipo_prenda` varchar(60) NOT NULL,
-  `descripcion` varchar(200)
+  `tipo_prenda` varchar(60) NOT NULL
 );
 
 CREATE TABLE `servicio` (
   `id_servicio` int PRIMARY KEY AUTO_INCREMENT,
-  `nombre_servicio` varchar(80) NOT NULL,
-  `descripcion` varchar(200)
+  `nombre_servicio` varchar(80) NOT NULL
 );
 
 CREATE TABLE `precio_servicio` (
