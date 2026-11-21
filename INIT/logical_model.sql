@@ -257,7 +257,7 @@ FROM (
 CREATE OR REPLACE VIEW `v_cliente_deuda` AS
 SELECT
   c.`id_cliente`, c.`tipo_cliente`, c.`nombre`, c.`apellido`, c.`telefono`,
-  COALESCE(SUM(r.`deuda_exigible`), 0) AS `saldo_pendiente`,
+  COALESCE(SUM(r.`deuda_exigible`), 0) AS `saldo_pendiente`
 FROM `cliente` c
 LEFT JOIN `v_pedido_resumen` r
   ON r.`id_cliente` = c.`id_cliente`
