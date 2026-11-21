@@ -124,7 +124,7 @@ ALTER TABLE `entrega_detalle` ADD CONSTRAINT `fk_ed_detalle`
   FOREIGN KEY (`id_detalle`, `id_pedido`)
   REFERENCES `detalle_pedido` (`id_detalle`, `id_pedido`) ON DELETE RESTRICT;
 
--- 6. REGLAS DE NEGOCIO (CHECK), una subsección por tabla
+-- 6. REGLAS DE NEGOCIO (CHECK)
 --    6.1 cliente
 
 ALTER TABLE `cliente`
