@@ -1,6 +1,8 @@
 -- 1. BASE DE DATOS
 
-CREATE DATABASE IF NOT EXISTS `afdb`
+DROP DATABASE IF EXISTS `afdb`;
+
+CREATE DATABASE `afdb`
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
@@ -59,22 +61,21 @@ CREATE TABLE `detalle_pedido` (
   `id_pedido` int NOT NULL,
   `precio_acordado` decimal(8,2) NOT NULL,
   `fecha_entrega_estimada` date NOT NULL,
-  `usa_repuesto` boolean NOT NULL,
+  `usa_repuesto` boolean NOT NULL DEFAULT false,
   `notas` varchar(255)
 );
 
---    2.3 Salida: entrega, entrega_detalle, pago
+--    2.3 Salida: entrega, detalle_entrega, pago
 
 CREATE TABLE `entrega` (
   `id_entrega` int PRIMARY KEY AUTO_INCREMENT,
   `id_pedido` int NOT NULL,
   `fecha_hora_entrega` datetime NOT NULL DEFAULT (CURRENT_TIMESTAMP),
   `observaciones_entrega` varchar(255),
-  `con_deuda` boolean NOT NULL DEFAULT false COMMENT 'true si tras esta entrega el pedido queda con deuda exigible',
-  `motivo_excepcion` varchar(255) COMMENT 'obligatorio si con_deuda = true; NULL si no'
+  `motivo_deuda` varchar(255) COMMENT 'si no es NULL, la entrega se hizo con deuda pendiente y este es el motivo'
 );
 
-CREATE TABLE `entrega_detalle` (
+CREATE TABLE `detalle_entrega` (
   `id_entrega` int NOT NULL,
   `id_detalle` int NOT NULL,
   `id_pedido` int NOT NULL,
@@ -93,19 +94,20 @@ CREATE TABLE `pago` (
 -- 3. ÍNDICES ÚNICOS
 --    3.1 Evitan duplicados (regla de negocio)
 
-CREATE UNIQUE INDEX `uq_cliente_identificacion` ON `cliente` (`tipo_identificacion`, `numero_identificacion`);
+CREATE UNIQUE INDEX `uq_cliente_tipo_identificacion_numero_identificacion` ON `cliente` (`tipo_identificacion`, `numero_identificacion`);
 CREATE UNIQUE INDEX `uq_prenda_tipo_prenda` ON `prenda` (`tipo_prenda`);
 CREATE UNIQUE INDEX `uq_servicio_nombre_servicio` ON `servicio` (`nombre_servicio`);
 CREATE UNIQUE INDEX `uq_precio_servicio_id_prenda_id_servicio_descripcion_arreglo` ON `precio_servicio` (`id_prenda`, `id_servicio`, `descripcion_arreglo`);
+CREATE UNIQUE INDEX `uq_cliente_tipo_cliente_telefono` ON `cliente` (`tipo_cliente`, `telefono`);
 
---    3.2 Destino de las FK compuestas de entrega_detalle
+--    3.2 Destino de las FK compuestas de detalle_entrega
 
 CREATE UNIQUE INDEX `uq_entrega_id_entrega_id_pedido` ON `entrega` (`id_entrega`, `id_pedido`);
 CREATE UNIQUE INDEX `uq_detalle_pedido_id_detalle_id_pedido` ON `detalle_pedido` (`id_detalle`, `id_pedido`);
 
 -- 4. ÍNDICES DE BÚSQUEDA
 
-CREATE INDEX `ix_cliente_telefono` ON `cliente` (`telefono`);
+CREATE INDEX `idx_cliente_telefono` ON `cliente` (`telefono`);
 
 -- 5. LLAVES FORÁNEAS (relaciones entre tablas)
 
@@ -117,10 +119,10 @@ ALTER TABLE `detalle_pedido` ADD CONSTRAINT `fk_detalle_pedido_precio_servicio` 
 ALTER TABLE `pago` ADD CONSTRAINT `fk_pago_pedido` FOREIGN KEY (`id_pedido`) REFERENCES `pedido` (`id_pedido`) ON DELETE RESTRICT;
 ALTER TABLE `entrega` ADD CONSTRAINT `fk_entrega_pedido`
   FOREIGN KEY (`id_pedido`) REFERENCES `pedido` (`id_pedido`) ON DELETE RESTRICT;
-ALTER TABLE `entrega_detalle` ADD CONSTRAINT `fk_ed_entrega`
+ALTER TABLE `detalle_entrega` ADD CONSTRAINT `fk_detalle_entrega_entrega`
   FOREIGN KEY (`id_entrega`, `id_pedido`)
   REFERENCES `entrega` (`id_entrega`, `id_pedido`) ON DELETE RESTRICT;
-ALTER TABLE `entrega_detalle` ADD CONSTRAINT `fk_ed_detalle`
+ALTER TABLE `detalle_entrega` ADD CONSTRAINT `fk_detalle_entrega_detalle_pedido`
   FOREIGN KEY (`id_detalle`, `id_pedido`)
   REFERENCES `detalle_pedido` (`id_detalle`, `id_pedido`) ON DELETE RESTRICT;
 
@@ -180,12 +182,9 @@ ALTER TABLE `pago`
 
 ALTER TABLE `entrega`
   ADD CONSTRAINT `ck_entrega_motivo_deuda`
-    CHECK (
-      (`con_deuda` AND `motivo_excepcion` IS NOT NULL AND CHAR_LENGTH(`motivo_excepcion`) > 0)
-      OR (NOT `con_deuda` AND `motivo_excepcion` IS NULL)
-    );
+    CHECK (`motivo_deuda` IS NULL OR CHAR_LENGTH(`motivo_deuda`) > 0);
 
--- 7. VISTAS: v_pedido_resumen, v_cliente_saldo
+-- 7. VISTAS: v_pedido_resumen, v_cliente_deuda
 
 -- Resumen por pedido: subtotal, descuento, total neto, pagado y saldo pendiente.
 -- Lineas y pagos se suman por separado para no duplicar montos al unir las dos tablas.
@@ -239,7 +238,7 @@ FROM (
         SUM(dp.`precio_acordado`) AS `subtotal`,
         SUM(CASE WHEN ed.`id_detalle` IS NOT NULL THEN dp.`precio_acordado` ELSE 0 END) AS `subtotal_entregado`
       FROM `detalle_pedido` dp
-      LEFT JOIN `entrega_detalle` ed ON ed.`id_detalle` = dp.`id_detalle`
+      LEFT JOIN `detalle_entrega` ed ON ed.`id_detalle` = dp.`id_detalle`
       GROUP BY dp.`id_pedido`
     ) d ON d.`id_pedido` = p.`id_pedido`
     LEFT JOIN (
