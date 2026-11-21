@@ -204,8 +204,7 @@ SELECT
   t.`monto_pagado`,
   t.`subtotal` - t.`descuento_monto` - t.`monto_pagado` AS `saldo_total_pendiente`,
   t.`subtotal_entregado` - t.`descuento_entregado` AS `total_entregado_neto`,
-  GREATEST(t.`subtotal_entregado` - t.`descuento_entregado` - t.`monto_pagado`, 0) AS `deuda_exigible`,
-  GREATEST(t.`monto_pagado` - (t.`subtotal_entregado` - t.`descuento_entregado`), 0) AS `saldo_favor`
+  GREATEST(t.`subtotal_entregado` - t.`descuento_entregado` - t.`monto_pagado`, 0) AS `deuda_exigible`
 FROM (
   SELECT
     b.`id_pedido`,
@@ -259,8 +258,6 @@ CREATE OR REPLACE VIEW `v_cliente_deuda` AS
 SELECT
   c.`id_cliente`, c.`tipo_cliente`, c.`nombre`, c.`apellido`, c.`telefono`,
   COALESCE(SUM(r.`deuda_exigible`), 0) AS `saldo_pendiente`,
-  COALESCE(SUM(r.`saldo_favor`), 0) AS `saldo_favor_pedidos`,
-  COALESCE(SUM(r.`saldo_total_pendiente`), 0) AS `saldo_por_retirar`
 FROM `cliente` c
 LEFT JOIN `v_pedido_resumen` r
   ON r.`id_cliente` = c.`id_cliente`
