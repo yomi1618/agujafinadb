@@ -4,11 +4,9 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from marshmallow import ValidationError, validate, fields
-from sqlalchemy import text, ForeignKeyConstraint
+from sqlalchemy import text, ForeignKeyConstraint, or_, func
 from sqlalchemy.engine import URL
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import or_
-
+from sqlalchemy.exc import IntegrityError, OperationalError
 load_dotenv()
 
 app = Flask(__name__)
@@ -153,7 +151,12 @@ class ClienteSchema(BaseSchema):
 
     tipo_cliente = fields.String(required=True, validate=validate.OneOf(['persona', 'empresa']))
     tipo_identificacion = fields.String(allow_none=True, validate=validate.OneOf(['cedula', 'ruc']))
-
+    nombre = fields.String(required=True,
+                           validate=[validate.Length(max=150),
+                                     validate.Regexp(r'^\s*\S', error='No puede estar vacio')])
+    telefono = fields.String(required=True,
+                             validate=[validate.Length(max=20),
+                                       validate.Regexp(r'^\s*\S', error='No puede estar vacio')])
 
 class PedidoSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
@@ -193,8 +196,16 @@ class PagoSchema(BaseSchema):
 @app.errorhandler(ValidationError)
 def handle_validation(e):
     db.session.rollback()
-    return jsonify({'error': e.messages}), 400
+    return jsonify({'error': e.normalized_messages()}), 400
 
+@app.errorhandler(OperationalError)
+def handle_operational(e):
+    db.session.rollback()
+    codigo = e.orig.args[0] if e.orig is not None and e.orig.args else None
+    if codigo == 3819:   # CHECK de MySQL incumplido
+        return jsonify({'error': 'Operacion no permitida por las reglas de la base de datos',
+                        'detalle': str(e.orig)}), 409
+    return jsonify({'error': 'Error de base de datos', 'detalle': str(e.orig)}), 500
 
 @app.errorhandler(IntegrityError)
 def handle_integrity(e):
@@ -202,7 +213,6 @@ def handle_integrity(e):
     # Duplicados, FK (p. ej. borrar algo que tiene registros hijos) o CHECK incumplido
     return jsonify({'error': 'Operacion no permitida por las reglas de la base de datos',
                     'detalle': str(e.orig)}), 409
-
 
 # =====================================================================
 # RUTAS CRUD (mismo patron para cada tabla)
@@ -416,11 +426,23 @@ def buscar_clientes():
     q = (request.args.get('q') or '').strip()
     if not q:
         return jsonify([])
-    like = f'%{q}%'
-    res = Cliente.query.filter(or_(Cliente.nombre.like(like),
-                                   Cliente.apellido.like(like),
-                                   Cliente.telefono.like(like))).all()
-    return jsonify(ClienteSchema(many=True).dump(res))
+    filas = consultar_vista("""
+        SELECT c.id_cliente, c.tipo_cliente, c.nombre, c.apellido,
+               c.tipo_identificacion, c.numero_identificacion, c.telefono,
+               c.direccion, c.ciudad, c.email, c.fecha_registro,
+               COALESCE(d.saldo_pendiente, 0) AS saldo_pendiente
+        FROM cliente c
+        LEFT JOIN v_cliente_deuda d ON d.id_cliente = c.id_cliente
+        WHERE c.nombre LIKE :patron
+           OR c.apellido LIKE :patron
+           OR c.telefono LIKE :patron
+           OR CONCAT_WS(' ', c.nombre, c.apellido) LIKE :patron
+        ORDER BY c.nombre, c.apellido
+    """, patron=f'%{q}%')
+    for f in filas:
+        f['fecha_registro'] = f['fecha_registro'].isoformat()
+        f['alerta_deuda'] = f['saldo_pendiente'] > 0     # la GUI muestra la alerta con esto
+    return jsonify(filas)
 
 @app.route('/clientes/<int:id_cliente>/pedidos', methods=['GET'])
 def pedidos_cliente(id_cliente):
@@ -430,6 +452,51 @@ def pedidos_cliente(id_cliente):
         sql += ' AND estado = :estado'
         params['estado'] = request.args['estado']
     return jsonify(consultar_vista(sql + ' ORDER BY id_pedido DESC', **params))
+
+@app.route('/prendas/<int:id_prenda>/servicios', methods=['GET'])
+def servicios_por_prenda(id_prenda):
+    """Nivel 2: servicios disponibles para la prenda elegida."""
+    return jsonify(consultar_vista("""
+        SELECT DISTINCT s.id_servicio, s.nombre_servicio
+        FROM precio_servicio ps
+        JOIN servicio s ON s.id_servicio = ps.id_servicio
+        WHERE ps.id_prenda = :p
+        ORDER BY s.nombre_servicio
+    """, p=id_prenda))
+
+
+@app.route('/prendas/<int:id_prenda>/servicios/<int:id_servicio>/descripciones', methods=['GET'])
+def descripciones_por_prenda_servicio(id_prenda, id_servicio):
+    """Nivel 3: descripciones con su id_precio y rango minimo/maximo."""
+    return jsonify(consultar_vista("""
+        SELECT id_precio, descripcion_arreglo, precio_minimo, precio_maximo
+        FROM precio_servicio
+        WHERE id_prenda = :p AND id_servicio = :s
+        ORDER BY descripcion_arreglo
+    """, p=id_prenda, s=id_servicio))
+
+@app.route('/pedidos/<int:id_pedido>/lineas', methods=['GET'])
+def lineas_pedido(id_pedido):
+    if db.session.get(Pedido, id_pedido) is None:
+        return jsonify({'error': 'Pedido no encontrado'}), 404
+    filas = consultar_vista("""
+        SELECT dp.id_detalle, pr.tipo_prenda, s.nombre_servicio, ps.descripcion_arreglo,
+               ps.precio_minimo, ps.precio_maximo, dp.precio_acordado,
+               dp.fecha_entrega_estimada, dp.usa_repuesto, dp.notas,
+               ed.id_entrega, (ed.id_detalle IS NOT NULL) AS entregada
+        FROM detalle_pedido dp
+        JOIN precio_servicio ps ON ps.id_precio = dp.id_precio
+        JOIN prenda pr ON pr.id_prenda = ps.id_prenda
+        JOIN servicio s ON s.id_servicio = ps.id_servicio
+        LEFT JOIN detalle_entrega ed ON ed.id_detalle = dp.id_detalle
+        WHERE dp.id_pedido = :id
+        ORDER BY dp.id_detalle
+    """, id=id_pedido)
+    for f in filas:
+        f['entregada'] = bool(f['entregada'])
+        f['usa_repuesto'] = bool(f['usa_repuesto'])
+        f['fecha_entrega_estimada'] = f['fecha_entrega_estimada'].isoformat()
+    return jsonify(filas)
 
 if __name__ == '__main__':
     app.run(debug=True, port=int(os.environ.get('PORT', 5000)))
