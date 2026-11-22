@@ -5,42 +5,7 @@
 
 USE `afdb`;
 
--- 1. CATALOGO ------------------------------------------------
-
-INSERT INTO `prenda` (`id_prenda`, `tipo_prenda`) VALUES
-  (1, 'Pantalon'),
-  (2, 'Camisa'),
-  (3, 'Vestido'),
-  (4, 'Chaqueta'),
-  (5, 'Falda'),
-  (6, 'Jean');
-
-INSERT INTO `servicio` (`id_servicio`, `nombre_servicio`) VALUES
-  (1, 'Dobladillo'),
-  (2, 'Cambio de cierre'),
-  (3, 'Ajuste de talla'),
-  (4, 'Remiendo'),
-  (5, 'Cambio de botones');
-
-INSERT INTO `precio_servicio`
-  (`id_precio`, `id_servicio`, `id_prenda`, `descripcion_arreglo`, `precio_minimo`, `precio_maximo`) VALUES
-  ( 1, 1, 1, 'Dobladillo simple',        4.00,  8.00),
-  ( 2, 2, 1, 'Cambio de cierre',         6.00, 10.00),
-  ( 3, 3, 1, 'Ajuste de cintura',        8.00, 15.00),
-  ( 4, 3, 2, 'Ajuste de mangas',         6.00, 12.00),
-  ( 5, 5, 2, 'Cambio de botones',        2.00,  5.00),
-  ( 6, 4, 2, 'Remiendo de costura',      3.00,  8.00),
-  ( 7, 1, 3, 'Dobladillo de vestido',    8.00, 15.00),
-  ( 8, 3, 3, 'Ajuste de talla',         15.00, 35.00),
-  ( 9, 2, 3, 'Cambio de cierre',         8.00, 14.00),
-  (10, 2, 4, 'Cambio de cierre',        12.00, 22.00),
-  (11, 3, 4, 'Ajuste de mangas',        12.00, 25.00),
-  (12, 1, 5, 'Dobladillo simple',        4.00,  8.00),
-  (13, 3, 5, 'Ajuste de cintura',        6.00, 12.00),
-  (14, 1, 6, 'Dobladillo original',      5.00,  9.00),
-  (15, 4, 6, 'Remiendo de rodilla',      5.00, 12.00);
-
--- 2. CLIENTES ------------------------------------------------
+-- 1. CLIENTES ------------------------------------------------
 
 INSERT INTO `cliente`
   (`id_cliente`, `tipo_cliente`, `nombre`, `apellido`, `tipo_identificacion`,
@@ -60,7 +25,7 @@ INSERT INTO `cliente`
   (7, 'empresa', 'Textiles Imbabura Cia. Ltda.', NULL, 'ruc', '1791234567001', '062900300',
       NULL,                           NULL,        NULL,                     '2026-07-25');
 
--- 3. PEDIDOS Y DETALLES -------------------------------------
+-- 2. PEDIDOS Y DETALLES -------------------------------------
 
 INSERT INTO `pedido`
   (`id_pedido`, `id_cliente`, `fecha_hora_recepcion`, `descuento_porcentaje`, `observaciones_pedido`) VALUES
@@ -94,7 +59,7 @@ INSERT INTO `detalle_pedido`
   -- Pedido 6
   (14,  2, 6,  8.00, '2026-11-14', TRUE,  'Cierre negro');
 
--- 4. ENTREGAS ------------------------------------------------
+-- 3. ENTREGAS ------------------------------------------------
 
 INSERT INTO `entrega`
   (`id_entrega`, `id_pedido`, `fecha_hora_entrega`, `observaciones_entrega`, `motivo_deuda`) VALUES
@@ -115,7 +80,7 @@ INSERT INTO `detalle_entrega` (`id_entrega`, `id_detalle`, `id_pedido`) VALUES
   (4, 11, 4),
   (5, 14, 6);
 
--- 5. PAGOS ---------------------------------------------------
+-- 4. PAGOS ---------------------------------------------------
 
 INSERT INTO `pago`
   (`id_pago`, `id_pedido`, `monto`, `fecha_hora_pago`, `tipo_pago`, `metodo_pago`) VALUES
@@ -127,7 +92,7 @@ INSERT INTO `pago`
   (6, 4, 14.70, '2026-11-09 10:40:00', 'saldo_final', 'transferencia'),
   (7, 6,  8.00, '2026-11-14 18:05:00', 'saldo_final', 'efectivo');
 
--- 6. VERIFICACION (valores esperados en comentarios) --------
+-- 5. VERIFICACION (valores esperados en comentarios) --------
 
 -- SELECT * FROM v_pedido_resumen ORDER BY id_pedido;
 --   P1: entregado | subtotal 16.00 | desc 0.00    | neto 16.00 | pagado 16.00 | saldo 0.00  | deuda_exigible 0.00
