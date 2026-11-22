@@ -2,7 +2,7 @@ BASE=http://localhost:5000
 H='Content-Type: application/json'
 req() { curl -s -w "\n   -> HTTP %{http_code}\n\n" "$@"; }
 
-# lectura catálogo
+############################# LECTURA CATÁLOGO #############################
 
 req $BASE/prendas
 req $BASE/prendas/1
@@ -34,3 +34,77 @@ req "$BASE/precios-servicio?id_prenda=99&id_servicio=99": HTTP 200 (NO EXISTE PR
 
 	req -X POST $BASE/prendas -H "$H" -d '{"tipo_prenda":"Pantalon"}'
 	req -X POST $BASE/servicios -H "$H" -d '{"nombre_servicio":"Entalle"}'
+
+############################# CLIENTES #############################
+
+# Crear (201)
+req -X POST $BASE/clientes -H "$H" -d '{"tipo_cliente":"persona","nombre":"Pedro","apellido":"Salazar","tipo_identificacion":"cedula","numero_identificacion":"1100000001","telefono":"0990000001","ciudad":"Ibarra"}'
+req -X POST $BASE/clientes -H "$H" -d '{"tipo_cliente":"empresa","nombre":"Confecciones Andinas","tipo_identificacion":"ruc","numero_identificacion":"1790099999001","telefono":"062700000"}'
+req -X POST $BASE/clientes -H "$H" -d '{"tipo_cliente":"persona","nombre":"Yomi","apellido":"Caizaluisa","tipo_identificacion":"ruc","numero_identificacion":"1790094599001","telefono":"062702400"}'
+
+#el contador del id sigue avanzando, incluso si se elimina un registro#
+
+# Validación de Marshmallow (400)
+req -X POST $BASE/clientes -H "$H" -d '{"tipo_cliente":"otro","nombre":"X","telefono":"1"}'
+req -X POST $BASE/clientes -H "$H" -d '{"tipo_cliente":"persona","nombre":"   ","apellido":"A","telefono":"1"}'
+req -X POST $BASE/clientes -H "$H" -d '{"tipo_cliente":"persona","nombre":"Sin telefono","apellido":"A"}'
+req -X POST $BASE/clientes -H "$H" -d '{"tipo_cliente":"persona","nombre":"Y","apellido":"A","telefono":"1","tipo_identificacion":"pasaporte"}'
+
+# Reglas CHECK de la BD (409)
+req -X POST $BASE/clientes -H "$H" -d '{"tipo_cliente":"persona","nombre":"Sin Apellido","telefono":"0900000001"}'
+req -X POST $BASE/clientes -H "$H" -d '{"tipo_cliente":"empresa","nombre":"Empresa Cedula","tipo_identificacion":"cedula","numero_identificacion":"1234567890","telefono":"0900000002"}'
+req -X PUT $BASE/clientes/8 -H "$H" -d '{"tipo_cliente":"empresa"}'     # persona con apellido y cedula -> empresa: debe fallar
+
+# Lectura (200)
+req $BASE/clientes                                  # 9 clientes
+req $BASE/clientes/1
+req $BASE/clientes/999                              # 404
+req "$BASE/clientes?ciudad=Atuntaqui"               # clientes 1, 4 y 6
+req "$BASE/clientes?tipo_cliente=empresa"           # 6, 7 y 9
+
+# Búsqueda
+req "$BASE/clientes/buscar?q=mar"                   # solo Maria Fernanda Lopez
+req "$BASE/clientes/buscar?q=0991"                  # solo cliente 1 (telefono)
+req "$BASE/clientes/buscar?q=Fernanda%20Lopez"      # cliente 1 (nombre + apellido)
+req "$BASE/clientes/buscar?q=Maria%20Lopez"         # [] (el nombre es "Maria Fernanda", no matchea; es lo esperado)
+req "$BASE/clientes/buscar?q=Carlos"                # cliente 2: saldo_pendiente 20.00, alerta_deuda true
+req "$BASE/clientes/buscar?q="                      # []
+
+# Deuda
+req $BASE/clientes/con-deuda                        # SOLO el cliente 2 con 20.00
+req $BASE/clientes/2/deuda                          # 20.00
+req $BASE/clientes/1/deuda                          # 0.00
+req $BASE/clientes/999/deuda                        # 404
+
+# PUT parcial
+req -X PUT $BASE/clientes/1 -H "$H" -d '{"email":"maria.nuevo@mail.com"}'   # 200
+req -X PUT $BASE/clientes/999 -H "$H" -d '{"email":"x@x.com"}'              # 404
+req -X PUT $BASE/clientes/1 -H "$H" -d '{"telefono":"   "}'                 # 400
+
+############################# LECTURA PEDIDOS #############################
+
+req $BASE/pedidos                                   # 6 pedidos
+req "$BASE/pedidos?id_cliente=6"                    # solo pedido 4
+req $BASE/pedidos/3
+req $BASE/pedidos/999                               # 404
+
+# Resumen: compará con tu comentario de verificación del seed
+req $BASE/pedidos/1/resumen    # entregado | neto 16.00 | pagado 16.00 | saldo 0 | deuda 0
+req $BASE/pedidos/2/resumen    # activo    | neto 38.00 | pagado 15.00 | saldo 23.00 | deuda_exigible 20.00
+req $BASE/pedidos/3/resumen    # activo    | desc 3.80 | neto 34.20 | pagado 10.00 | saldo 24.20
+req $BASE/pedidos/4/resumen    # entregado | desc 1.30 | neto 24.70 | pagado 24.70
+req $BASE/pedidos/5/resumen    # activo    | neto 13.00 | pagado 0 | saldo 13.00
+req $BASE/pedidos/6/resumen    # entregado | neto 8.00 | pagado 8.00
+req $BASE/pedidos/999/resumen  # 404
+
+# Líneas
+req $BASE/pedidos/4/lineas     # 4 líneas: 8,9,10 con id_entrega 3; la 11 con id_entrega 4; entregada true
+req $BASE/pedidos/5/lineas     # 12 y 13, entregada false
+req $BASE/pedidos/999/lineas   # 404
+
+# Por cliente
+req $BASE/clientes/2/pedidos                         # pedido 2
+req "$BASE/clientes/2/pedidos?estado=activo"         # pedido 2
+req "$BASE/clientes/2/pedidos?estado=entregado"      # []
+req "$BASE/clientes/6/pedidos?estado=entregado"      # pedido 4
+req "$BASE/clientes/6/pedidos?estado=activo"         # []
