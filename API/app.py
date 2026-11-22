@@ -7,6 +7,7 @@ from marshmallow import ValidationError, validate, fields
 from sqlalchemy import text, ForeignKeyConstraint, or_, func
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import IntegrityError, OperationalError
+
 load_dotenv()
 
 app = Flask(__name__)
