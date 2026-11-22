@@ -1,0 +1,29 @@
+BASE=http://localhost:5000
+H='Content-Type: application/json'
+req() { curl -s -w "\n   -> HTTP %{http_code}\n\n" "$@"; }
+
+# revisar los precios registrados
+
+req $BASE/precios-servicio
+
+# lectura catálogo
+
+req $BASE/prendas
+req $BASE/prendas/1
+req $BASE/prendas/999
+req $BASE/servicios
+req $BASE/precios-servicio
+req "$BASE/precios-servicio?id_prenda=1"
+req "$BASE/precios-servicio?id_prenda=3&id_servicio=6"
+
+	# navegación por niveles
+
+	req $BASE/prendas/1/servicios
+	req $BASE/prendas/2/servicios
+	req $BASE/prendas/1/servicios/2/descripciones
+	req $BASE/prendas/3/servicios/6/descripciones
+
+	# Unique -> 409
+
+	req -X POST $BASE/prendas -H "$H" -d '{"tipo_prenda":"Pantalon"}'
+	req -X POST $BASE/servicios -H "$H" -d '{"nombre_servicio":"Entalle"}'
