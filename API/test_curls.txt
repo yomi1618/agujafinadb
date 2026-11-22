@@ -2,19 +2,26 @@ BASE=http://localhost:5000
 H='Content-Type: application/json'
 req() { curl -s -w "\n   -> HTTP %{http_code}\n\n" "$@"; }
 
-# revisar los precios registrados
-
-req $BASE/precios-servicio
-
 # lectura catálogo
 
 req $BASE/prendas
 req $BASE/prendas/1
 req $BASE/prendas/999
+
 req $BASE/servicios
+req $BASE/servicios/2
+req $BASE/servicios/999
+
 req $BASE/precios-servicio
 req "$BASE/precios-servicio?id_prenda=1"
 req "$BASE/precios-servicio?id_prenda=3&id_servicio=6"
+
+# casos no cubiertos #
+
+req "$BASE/precios-servicio?id_prenda=99": HTTP 200 (NO EXISTE PRENDA 99)
+req "$BASE/precios-servicio?id_prenda=3&id_servicio=99": HTTP 200 (NO EXISTE SERVICIO 99)
+req "$BASE/precios-servicio?id_prenda=99&id_servicio=6": HTTP 200 (NO EXISTE PRENDA 99)
+req "$BASE/precios-servicio?id_prenda=99&id_servicio=99": HTTP 200 (NO EXISTE PRENDA 99 NI SERVICIO 99)
 
 	# navegación por niveles
 
