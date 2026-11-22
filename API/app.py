@@ -7,8 +7,9 @@ from marshmallow import ValidationError, validate, fields
 from sqlalchemy import text, ForeignKeyConstraint
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_
 
-load_dotenv()   # lee el archivo .env (debe ir ANTES de usar os.environ)
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -29,17 +30,16 @@ ma = Marshmallow(app)
 # =====================================================================
 
 # ---------- Catalogo ----------
+
 class Prenda(db.Model):
     __tablename__ = 'prenda'
     id_prenda = db.Column(db.Integer, primary_key=True)
     tipo_prenda = db.Column(db.String(60), nullable=False, unique=True)
 
-
 class Servicio(db.Model):
     __tablename__ = 'servicio'
     id_servicio = db.Column(db.Integer, primary_key=True)
     nombre_servicio = db.Column(db.String(80), nullable=False, unique=True)
-
 
 class PrecioServicio(db.Model):
     __tablename__ = 'precio_servicio'
@@ -50,8 +50,8 @@ class PrecioServicio(db.Model):
     precio_minimo = db.Column(db.Numeric(8, 2), nullable=False)
     precio_maximo = db.Column(db.Numeric(8, 2), nullable=False)
 
-
 # ---------- Operacion ----------
+
 class Cliente(db.Model):
     __tablename__ = 'cliente'
     id_cliente = db.Column(db.Integer, primary_key=True)
@@ -66,7 +66,6 @@ class Cliente(db.Model):
     email = db.Column(db.String(120))
     fecha_registro = db.Column(db.Date, nullable=False, server_default=text('(CURRENT_DATE)'))
 
-
 class Pedido(db.Model):
     __tablename__ = 'pedido'
     id_pedido = db.Column(db.Integer, primary_key=True)
@@ -74,7 +73,6 @@ class Pedido(db.Model):
     fecha_hora_recepcion = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
     descuento_porcentaje = db.Column(db.Numeric(4, 2), nullable=False, server_default='0')
     observaciones_pedido = db.Column(db.String(255))
-
 
 class DetallePedido(db.Model):
     __tablename__ = 'detalle_pedido'
@@ -86,8 +84,8 @@ class DetallePedido(db.Model):
     usa_repuesto = db.Column(db.Boolean, nullable=False, server_default=db.false())
     notas = db.Column(db.String(255))
 
-
 # ---------- Salida ----------
+
 class Entrega(db.Model):
     __tablename__ = 'entrega'
     id_entrega = db.Column(db.Integer, primary_key=True)
@@ -95,7 +93,6 @@ class Entrega(db.Model):
     fecha_hora_entrega = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
     observaciones_entrega = db.Column(db.String(255))
     motivo_deuda = db.Column(db.String(255))   # si no es NULL, se entrego con deuda
-
 
 class DetalleEntrega(db.Model):
     __tablename__ = 'detalle_entrega'
@@ -167,7 +164,7 @@ class PedidoSchema(BaseSchema):
 class DetallePedidoSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
         model = DetallePedido
-        dump_only = ('id_detalle', 'id_pedido')
+        dump_only = ('id_detalle',)
 
 class EntregaSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
@@ -309,7 +306,7 @@ register_crud('clientes', Cliente, ClienteSchema)
 register_crud('pedidos', Pedido, PedidoSchema, permitir_crear=False)
 register_crud('detalles-pedido', DetallePedido, DetallePedidoSchema, validar=validar_linea, validar_eliminar=no_borrar_ultima_linea)
 register_crud('entregas', Entrega, EntregaSchema, permitir_crear=False)
-register_crud('detalles-entrega', DetalleEntrega, DetalleEntregaSchema, validar_eliminar=no_borrar_ultima_linea_entrega)
+register_crud('detalles-entrega', DetalleEntrega, DetalleEntregaSchema, permitir_crear=False, validar_eliminar=no_borrar_ultima_linea_entrega)
 register_crud('pagos', Pago, PagoSchema, validar=validar_pago)
 
 @app.route('/pedidos', methods=['POST'])
@@ -414,6 +411,25 @@ def clientes_con_deuda():
     return jsonify(consultar_vista(
         'SELECT * FROM v_cliente_deuda WHERE saldo_pendiente > 0 ORDER BY saldo_pendiente DESC'))
 
+@app.route('/clientes/buscar', methods=['GET'])
+def buscar_clientes():
+    q = (request.args.get('q') or '').strip()
+    if not q:
+        return jsonify([])
+    like = f'%{q}%'
+    res = Cliente.query.filter(or_(Cliente.nombre.like(like),
+                                   Cliente.apellido.like(like),
+                                   Cliente.telefono.like(like))).all()
+    return jsonify(ClienteSchema(many=True).dump(res))
+
+@app.route('/clientes/<int:id_cliente>/pedidos', methods=['GET'])
+def pedidos_cliente(id_cliente):
+    sql = 'SELECT * FROM v_pedido_resumen WHERE id_cliente = :id'
+    params = {'id': id_cliente}
+    if request.args.get('estado') in ('activo', 'entregado'):
+        sql += ' AND estado = :estado'
+        params['estado'] = request.args['estado']
+    return jsonify(consultar_vista(sql + ' ORDER BY id_pedido DESC', **params))
 
 if __name__ == '__main__':
     app.run(debug=True, port=int(os.environ.get('PORT', 5000)))
