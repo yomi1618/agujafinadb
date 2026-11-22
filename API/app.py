@@ -106,7 +106,6 @@ class DetalleEntrega(db.Model):
                              ['detalle_pedido.id_detalle', 'detalle_pedido.id_pedido']),
     )
 
-
 class Pago(db.Model):
     __tablename__ = 'pago'
     id_pago = db.Column(db.Integer, primary_key=True)
@@ -116,33 +115,29 @@ class Pago(db.Model):
     tipo_pago = db.Column(db.String(12), nullable=False)       # adelanto | saldo_final
     metodo_pago = db.Column(db.String(15), nullable=False)     # efectivo | transferencia | cheque
 
-
 # =====================================================================
 # ESQUEMAS (Marshmallow): validan lo que entra y dan formato a lo que sale
 # =====================================================================
+
 class BaseSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         include_fk = True        # incluye las llaves foraneas (id_cliente, id_pedido...)
         load_instance = True     # load() devuelve objetos del modelo
-
 
 class PrendaSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
         model = Prenda
         dump_only = ('id_prenda',)
 
-
 class ServicioSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
         model = Servicio
         dump_only = ('id_servicio',)
 
-
 class PrecioServicioSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
         model = PrecioServicio
         dump_only = ('id_precio',)
-
 
 class ClienteSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
@@ -163,7 +158,6 @@ class PedidoSchema(BaseSchema):
         model = Pedido
         dump_only = ('id_pedido',)
 
-
 class DetallePedidoSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
         model = DetallePedido
@@ -173,7 +167,6 @@ class EntregaSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
         model = Entrega
         dump_only = ('id_entrega',)
-
 
 class DetalleEntregaSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
@@ -188,7 +181,6 @@ class PagoSchema(BaseSchema):
     tipo_pago = fields.String(required=True, validate=validate.OneOf(['adelanto', 'saldo_final']))
     metodo_pago = fields.String(required=True,
                                 validate=validate.OneOf(['efectivo', 'transferencia', 'cheque']))
-
 
 # =====================================================================
 # MANEJO DE ERRORES (las reglas CHECK/FK de MySQL se traducen a HTTP)
@@ -248,7 +240,6 @@ def no_borrar_ultima_linea(det):
     if n <= 1:
         raise ValidationError('El pedido debe conservar al menos una linea', 'detalles')
 
-
 def no_borrar_ultima_linea_entrega(de):
     n = DetalleEntrega.query.filter_by(id_entrega=de.id_entrega).count()
     if n <= 1:
@@ -307,7 +298,6 @@ def register_crud(path, model, schema_cls, validar=None, permitir_crear=True, va
     app.add_url_rule(f'/{path}/<int:item_id>', f'{name}_obtener', obtener, methods=['GET'])
     app.add_url_rule(f'/{path}/<int:item_id>', f'{name}_actualizar', actualizar, methods=['PUT'])
     app.add_url_rule(f'/{path}/<int:item_id>', f'{name}_eliminar', eliminar, methods=['DELETE'])
-
 
 register_crud('prendas', Prenda, PrendaSchema)
 register_crud('servicios', Servicio, ServicioSchema)
@@ -399,7 +389,6 @@ def consultar_vista(sql, **params):
     filas = db.session.execute(text(sql), params).mappings().all()
     return [dict(f) for f in filas]
 
-
 @app.route('/pedidos/<int:id_pedido>/resumen', methods=['GET'])
 def resumen_pedido(id_pedido):
     datos = consultar_vista('SELECT * FROM v_pedido_resumen WHERE id_pedido = :id', id=id_pedido)
@@ -407,14 +396,12 @@ def resumen_pedido(id_pedido):
         return jsonify({'error': 'Pedido no encontrado'}), 404
     return jsonify(datos[0])
 
-
 @app.route('/clientes/<int:id_cliente>/deuda', methods=['GET'])
 def deuda_cliente(id_cliente):
     datos = consultar_vista('SELECT * FROM v_cliente_deuda WHERE id_cliente = :id', id=id_cliente)
     if not datos:
         return jsonify({'error': 'Cliente no encontrado'}), 404
     return jsonify(datos[0])
-
 
 @app.route('/clientes/con-deuda', methods=['GET'])
 def clientes_con_deuda():
@@ -463,7 +450,6 @@ def servicios_por_prenda(id_prenda):
         WHERE ps.id_prenda = :p
         ORDER BY s.nombre_servicio
     """, p=id_prenda))
-
 
 @app.route('/prendas/<int:id_prenda>/servicios/<int:id_servicio>/descripciones', methods=['GET'])
 def descripciones_por_prenda_servicio(id_prenda, id_servicio):
