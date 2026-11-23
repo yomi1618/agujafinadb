@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aguja Fina</title>
+  <link rel="stylesheet" href="/gui/styles.css">
+</head>
+<body>
+  <a class="skip" href="#app">Saltar al contenido</a>
+  <header class="bar">
+    <span class="brand">Aguja Fina</span>
+    <nav class="nav" aria-label="Principal">
+      <a href="#/">Mostrador</a>
+      <a href="#/saldos">Saldos pendientes</a>
+    </nav>
+    <span id="api-status" class="pill" role="status">Conectando…</span>
+  </header>
+  <main id="app" class="wrap" tabindex="-1"></main>
+  <div id="toasts" aria-live="polite"></div>
+  <dialog id="modal" aria-labelledby="modal-title"></dialog>
+  <script src="/gui/app.js"></script>
+</body>
+</html>
