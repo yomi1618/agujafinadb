@@ -11,11 +11,19 @@
   <header class="bar">
     <span class="brand">Aguja Fina</span>
     <nav class="nav" aria-label="Principal">
-      <a href="#/">Mostrador</a>
+      <a href="#/">Inicio</a>
+      <a href="#/catalogo">Catálogo</a>
       <a href="#/saldos">Saldos pendientes</a>
     </nav>
+    <button id="btn-buscar" class="iconbtn" type="button" aria-expanded="false" aria-controls="panel-buscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="M15 15l6 6"/></svg>Buscar</button>
     <span id="api-status" class="pill" role="status">Conectando…</span>
   </header>
+  <section id="panel-buscar" class="searchpanel" hidden aria-label="Buscar cliente">
+    <div class="searchbox">
+      <div class="row"><label class="grow" for="bq"><span class="lbl">Buscar cliente por nombre, apellido o teléfono</span><input id="bq" type="search" autocomplete="off"></label><a class="btn accent" data-nuevo href="#/cliente/nuevo">Nuevo cliente</a></div>
+      <div id="bres" class="mt" aria-live="polite"></div>
+    </div>
+  </section>
   <main id="app" class="wrap" tabindex="-1"></main>
   <div id="toasts" aria-live="polite"></div>
   <dialog id="modal" aria-labelledby="modal-title"></dialog>
