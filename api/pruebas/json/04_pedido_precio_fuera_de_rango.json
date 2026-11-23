@@ -1,0 +1,4 @@
+{"id_cliente": 5, "descuento_porcentaje": 5,
+ "detalles": [
+   {"id_precio": 1, "precio_acordado": 50, "fecha_entrega_estimada": "2026-12-01"}
+ ]}

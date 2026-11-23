@@ -1,0 +1,5 @@
+{"id_cliente": 5, "descuento_porcentaje": 5,
+ "detalles": [
+   {"id_precio": 1, "precio_acordado": 6, "fecha_entrega_estimada": "2026-12-01", "notas": "azul"},
+   {"id_precio": 9, "precio_acordado": 7, "fecha_entrega_estimada": "2026-12-03", "usa_repuesto": true}
+ ]}

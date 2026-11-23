@@ -1,0 +1,292 @@
+# =====================================================================
+# Aguja Fina - pruebas manuales de la API desde VS Code
+# Requiere la extensión "REST Client" (Huachao Mao) y la API encendida.
+# Haz clic en "Send Request" sobre cada petición, EN ORDEN de arriba abajo:
+# las peticiones con "# @name" guardan su respuesta y las siguientes
+# toman de ahí los ids (cliente, pedido, líneas).
+# Si tu API usa otro puerto, cambia la línea de abajo.
+# =====================================================================
+
+@base = http://localhost:5000
+@json = application/json
+
+
+### ---------------------------------------------------------------------
+### 1. CASCADA Prenda -> Servicio -> Descripción (FR-05)
+### ---------------------------------------------------------------------
+
+### 1.1 Nivel 1: prendas
+GET {{base}}/prendas
+
+### 1.2 Nivel 2: servicios del pantalón (id_prenda 1)
+GET {{base}}/prendas/1/servicios
+
+### 1.3 Nivel 3: descripciones con mínimo y máximo (pantalón + bastas)
+GET {{base}}/prendas/1/servicios/1/descripciones
+
+### 1.4 Prenda inexistente -> 404
+GET {{base}}/prendas/999999
+
+
+### ---------------------------------------------------------------------
+### 2. CLIENTES Y ALERTA DE DEUDA (FR-01, FR-02, FR-03)
+### ---------------------------------------------------------------------
+
+### 2.1 Cliente con deuda del seed -> alerta_deuda true, 20.00
+GET {{base}}/clientes/buscar?q=Carlos
+
+### 2.2 Registrar una persona (teléfono aleatorio para poder repetir) -> 201
+# @name cliente
+POST {{base}}/clientes
+Content-Type: {{json}}
+
+{
+  "tipo_cliente": "persona",
+  "nombre": "Pedro",
+  "apellido": "Salazar",
+  "telefono": "09{{$randomInt 10000000 99999999}}",
+  "direccion": "Calle Bolivar 12",
+  "ciudad": "Ibarra"
+}
+
+### 2.3 Persona sin apellido -> 409 (CHECK ck_cliente_apellido_tipo)
+POST {{base}}/clientes
+Content-Type: {{json}}
+
+{
+  "tipo_cliente": "persona",
+  "nombre": "Sin Apellido",
+  "telefono": "09{{$randomInt 10000000 99999999}}"
+}
+
+### 2.4 Nombre vacío -> 400 (Marshmallow)
+POST {{base}}/clientes
+Content-Type: {{json}}
+
+{
+  "tipo_cliente": "persona",
+  "nombre": "   ",
+  "apellido": "X",
+  "telefono": "09{{$randomInt 10000000 99999999}}"
+}
+
+### 2.5 Otra persona con el mismo teléfono -> 409 (UNIQUE tipo + teléfono)
+POST {{base}}/clientes
+Content-Type: {{json}}
+
+{
+  "tipo_cliente": "persona",
+  "nombre": "Otra",
+  "apellido": "Persona",
+  "telefono": "{{cliente.response.body.$.telefono}}"
+}
+
+### 2.6 Una empresa con el mismo teléfono -> 201 (sí está permitido)
+POST {{base}}/clientes
+Content-Type: {{json}}
+
+{
+  "tipo_cliente": "empresa",
+  "nombre": "Confecciones Salazar",
+  "telefono": "{{cliente.response.body.$.telefono}}"
+}
+
+### 2.7 Buscar por ese teléfono -> lista la persona y la empresa
+GET {{base}}/clientes/buscar?q={{cliente.response.body.$.telefono}}
+
+
+### ---------------------------------------------------------------------
+### 3. PEDIDO (FR-04, FR-07, FR-08, FR-09)
+### ---------------------------------------------------------------------
+
+### 3.1 Pedido válido: 2 líneas y 5 % de descuento -> 201
+#     id_precio 1 = Pantalon, bastas 20-24 ($5 a $7)
+#     id_precio 9 = Pantalon, cambio de cierre ($6 a $8)
+# @name pedido
+POST {{base}}/pedidos
+Content-Type: {{json}}
+
+{
+  "id_cliente": {{cliente.response.body.$.id_cliente}},
+  "descuento_porcentaje": 5,
+  "detalles": [
+    {"id_precio": 1, "precio_acordado": 6, "fecha_entrega_estimada": "2026-12-01", "notas": "azul"},
+    {"id_precio": 9, "precio_acordado": 7, "fecha_entrega_estimada": "2026-12-03", "usa_repuesto": true}
+  ]
+}
+
+### 3.2 Precio fuera de rango -> 400 y no se guarda nada
+POST {{base}}/pedidos
+Content-Type: {{json}}
+
+{
+  "id_cliente": {{cliente.response.body.$.id_cliente}},
+  "detalles": [
+    {"id_precio": 1, "precio_acordado": 50, "fecha_entrega_estimada": "2026-12-01"}
+  ]
+}
+
+### 3.3 Fecha estimada en el pasado -> 400
+POST {{base}}/pedidos
+Content-Type: {{json}}
+
+{
+  "id_cliente": {{cliente.response.body.$.id_cliente}},
+  "detalles": [
+    {"id_precio": 1, "precio_acordado": 6, "fecha_entrega_estimada": "2020-01-01"}
+  ]
+}
+
+### 3.4 Descuento de 3 % -> 409 (CHECK ck_pedido_descuento)
+POST {{base}}/pedidos
+Content-Type: {{json}}
+
+{
+  "id_cliente": {{cliente.response.body.$.id_cliente}},
+  "descuento_porcentaje": 3,
+  "detalles": [
+    {"id_precio": 1, "precio_acordado": 6, "fecha_entrega_estimada": "2026-12-01"}
+  ]
+}
+
+### 3.5 Pedido sin líneas -> 400
+POST {{base}}/pedidos
+Content-Type: {{json}}
+
+{
+  "id_cliente": {{cliente.response.body.$.id_cliente}},
+  "detalles": []
+}
+
+### 3.6 Resumen: subtotal 13.00, descuento 0.65, total 12.35, estado activo
+GET {{base}}/pedidos/{{pedido.response.body.$.pedido.id_pedido}}/resumen
+
+### 3.7 Líneas con prenda, servicio, rango y si ya se entregaron
+GET {{base}}/pedidos/{{pedido.response.body.$.pedido.id_pedido}}/lineas
+
+
+### ---------------------------------------------------------------------
+### 4. PAGOS (FR-10)
+### ---------------------------------------------------------------------
+
+### 4.1 Adelanto de 5.00 -> 201
+POST {{base}}/pagos
+Content-Type: {{json}}
+
+{
+  "id_pedido": {{pedido.response.body.$.pedido.id_pedido}},
+  "monto": 5,
+  "tipo_pago": "adelanto",
+  "metodo_pago": "efectivo"
+}
+
+### 4.2 Pago que supera el total -> 400
+POST {{base}}/pagos
+Content-Type: {{json}}
+
+{
+  "id_pedido": {{pedido.response.body.$.pedido.id_pedido}},
+  "monto": 50,
+  "tipo_pago": "adelanto",
+  "metodo_pago": "efectivo"
+}
+
+### 4.3 Método de pago no permitido -> 400
+POST {{base}}/pagos
+Content-Type: {{json}}
+
+{
+  "id_pedido": {{pedido.response.body.$.pedido.id_pedido}},
+  "monto": 1,
+  "tipo_pago": "adelanto",
+  "metodo_pago": "tarjeta"
+}
+
+### 4.4 Deuda todavía en 0.00: nada se ha entregado
+GET {{base}}/clientes/{{cliente.response.body.$.id_cliente}}/deuda
+
+
+### ---------------------------------------------------------------------
+### 5. ENTREGA PARCIAL CON DEUDA (FR-13, FR-14)
+### ---------------------------------------------------------------------
+
+### 5.1 Entregar la segunda prenda sin motivo -> 400 "Se requiere motivo_deuda"
+POST {{base}}/pedidos/{{pedido.response.body.$.pedido.id_pedido}}/entregas
+Content-Type: {{json}}
+
+{
+  "lineas": [{{pedido.response.body.$.detalles[1].id_detalle}}]
+}
+
+### 5.2 La misma entrega con motivo -> 201
+POST {{base}}/pedidos/{{pedido.response.body.$.pedido.id_pedido}}/entregas
+Content-Type: {{json}}
+
+{
+  "lineas": [{{pedido.response.body.$.detalles[1].id_detalle}}],
+  "motivo_deuda": "Paga el lunes"
+}
+
+### 5.3 Deuda exigible: 1.65
+GET {{base}}/clientes/{{cliente.response.body.$.id_cliente}}/deuda
+
+### 5.4 Reporte de deudores: aparece el cliente nuevo
+GET {{base}}/clientes/con-deuda
+
+### 5.5 Entregar otra vez la misma prenda -> 409 (PK de detalle_entrega)
+POST {{base}}/pedidos/{{pedido.response.body.$.pedido.id_pedido}}/entregas
+Content-Type: {{json}}
+
+{
+  "lineas": [{{pedido.response.body.$.detalles[1].id_detalle}}],
+  "motivo_deuda": "x"
+}
+
+
+### ---------------------------------------------------------------------
+### 6. COBRAR Y CERRAR EL PEDIDO
+### ---------------------------------------------------------------------
+
+### 6.1 Pago final de 7.35 -> 201
+POST {{base}}/pagos
+Content-Type: {{json}}
+
+{
+  "id_pedido": {{pedido.response.body.$.pedido.id_pedido}},
+  "monto": 7.35,
+  "tipo_pago": "saldo_final",
+  "metodo_pago": "efectivo"
+}
+
+### 6.2 Entregar la primera prenda, ya pagada -> 201 sin pedir motivo
+POST {{base}}/pedidos/{{pedido.response.body.$.pedido.id_pedido}}/entregas
+Content-Type: {{json}}
+
+{
+  "lineas": [{{pedido.response.body.$.detalles[0].id_detalle}}]
+}
+
+### 6.3 Resumen final: estado entregado, saldo 0.00
+GET {{base}}/pedidos/{{pedido.response.body.$.pedido.id_pedido}}/resumen
+
+### 6.4 Pedidos entregados del cliente
+GET {{base}}/clientes/{{cliente.response.body.$.id_cliente}}/pedidos?estado=entregado
+
+
+### ---------------------------------------------------------------------
+### 7. INTEGRIDAD Y CRUD (NFR-04, FR-17)
+### ---------------------------------------------------------------------
+
+### 7.1 Borrar un cliente con pedidos -> 409 (ON DELETE RESTRICT)
+DELETE {{base}}/clientes/{{cliente.response.body.$.id_cliente}}
+
+### 7.2 Actualizar solo el email (PUT parcial) -> 200
+PUT {{base}}/clientes/{{cliente.response.body.$.id_cliente}}
+Content-Type: {{json}}
+
+{
+  "email": "pedro.salazar@ejemplo.com"
+}
+
+### 7.3 Filtrar clientes por columna
+GET {{base}}/clientes?ciudad=Ibarra
