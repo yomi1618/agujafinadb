@@ -1,4 +1,4 @@
-# Aguja Fina: sistema de gestión para una sastrería
+# Aguja Fina: sistema de gestión
 
 Aguja Fina reemplaza los cuadernos de una sastrería de arreglos de ropa por una base de datos
 relacional y una API. Registra clientes, pedidos con varias prendas, precios negociados dentro de un
