@@ -1,10 +1,11 @@
-# Aguja Fina: sistema de gestión
+# Aguja Fina: sistema de gestión para una sastrería
 
 Aguja Fina reemplaza los cuadernos de una sastrería de arreglos de ropa por una base de datos
-relacional y una API. Registra clientes, pedidos con varias prendas, precios negociados dentro de un
+relacional, una API y una interfaz web. Registra clientes, pedidos con varias prendas, precios negociados dentro de un
 rango, adelantos, entregas parciales y deudas, y calcula al instante cuánto debe cada cliente.
 
-Todo corre en un solo computador: MySQL 8.0.33 en Docker y una API en Flask.
+Todo corre en un solo computador: MySQL 8.0.33 en Docker, una API en Flask y una GUI web que la
+misma API sirve en `http://localhost:5000/`.
 
 **Autores:** Hilary Chaglla y Yomi Caizaluisa.
 
@@ -20,12 +21,13 @@ agujafinadb/
 │   ├── catalog.sql           catálogo: 3 prendas, 6 servicios, 26 precios
 │   └── seed.sql              datos de prueba: 7 clientes, 6 pedidos, entregas y pagos
 └── API/
-    ├── app.py                la API (Flask + SQLAlchemy + Marshmallow)
+    ├── app.py                la API (Flask + SQLAlchemy + Marshmallow); también sirve la GUI
+    ├── GUI/                  la interfaz web: index.html, styles.css, app.js y fuentes
     ├── .env.example          plantilla de configuración (copiar como .env)
     ├── test_curls.txt        66 pruebas con curl (bash)
     ├── correr_test_curls.py  ejecuta test_curls.txt sin bash, desde el cmd de Windows
     └── pruebas/
-        ├── probar_api.py     prueba automática del flujo completo (48 casos)
+        ├── probar_api.py     prueba automática del flujo completo (57 casos)
         ├── api.http          pruebas manuales desde VS Code (extensión REST Client)
         ├── demo.sh           demostración guiada, paso a paso
         ├── reiniciar_base.bat  recarga la base desde cero (Windows)
@@ -131,20 +133,37 @@ python app.py
 
 La API queda en `http://localhost:5000`. Para comprobarla: `curl http://localhost:5000/prendas`.
 
+### 7. Abrir la GUI
+
+Con la API encendida, abre `http://localhost:5000/` en el navegador. No hace falta instalar nada más ni
+tener Internet. La GUI tiene siete pantallas:
+
+| Pantalla | Ruta | Qué hace |
+| --- | --- | --- |
+| Mostrador | `#/` | Busca clientes por nombre, apellido o teléfono y muestra su deuda |
+| Cliente nuevo | `#/cliente/nuevo` | Registra un cliente; avisa si el teléfono ya existe para ese tipo |
+| Ficha del cliente | `#/cliente/<id>` | Pedidos activos e historial de entregados |
+| Nuevo pedido | `#/cliente/<id>/pedido-nuevo` | Líneas en cascada, descuento y abono |
+| Pedido | `#/pedido/<id>` | Resumen, líneas, pagos y entregas; registrar pagos |
+| Entrega | `#/pedido/<id>/entrega` | Marca las prendas que salen; pide motivo si queda deuda |
+| Saldos pendientes | `#/saldos` | Reporte de clientes con deuda |
+
+La GUI solo habla con la API: nunca se conecta a MySQL.
+
 ## Pruebas
 
-Hay cuatro formas de probar la API. En todas conviene recargar la base antes (paso 2).
+Hay cinco formas de probar la API. En todas conviene recargar la base antes (paso 2).
 
 | Forma | Comando | Dónde |
 | --- | --- | --- |
 | Las 66 pruebas de `test_curls.txt` | `bash test_curls.txt` | Ubuntu, WSL o Git Bash, desde `API` |
 | Las mismas, sin bash | `python correr_test_curls.py` | cmd de Windows, desde `API` |
-| Flujo completo con verificación automática | `python pruebas/probar_api.py` | Cualquier terminal, desde `API` |
+| Flujo completo con verificación automática (57 casos) | `python pruebas/probar_api.py` | Cualquier terminal, desde `API` |
 | Pruebas manuales con botón «Send Request» | Abrir `pruebas/api.http` | VS Code con la extensión REST Client |
 | Demostración guiada, un paso por Enter | `bash pruebas/demo.sh` | Ubuntu, WSL o Git Bash, desde `API` |
 
 Resultado esperado de `test_curls.txt` con la base recién cargada: 45 respuestas 200, 3 con 201,
-5 con 400, 8 con 404 y 5 con 409. `probar_api.py` debe terminar con «48 de 48 pruebas pasaron», y
+5 con 400, 8 con 404 y 5 con 409. `probar_api.py` debe terminar con «57 de 57 pruebas pasaron», y
 `demo.sh` con «19 de 19 pasos dieron el código esperado».
 
 ## Modelo de datos
@@ -183,7 +202,9 @@ el taller es saldo pendiente, pero no deuda.
 
 **Reglas que garantiza la API**, porque cruzan tablas: el precio acordado dentro del rango, la fecha
 estimada no anterior a la recepción, al menos una línea por pedido, la suma de pagos no mayor al total y
-el motivo obligatorio cuando una entrega deja deuda.
+el motivo obligatorio cuando una entrega deja deuda. Al modificar, además: una línea ya entregada no
+se modifica; un cambio de descuento o de precio no puede dejar el total por debajo de lo pagado; y los
+pagos de un pedido con entregas no se modifican ni se borran (se registra un pago nuevo).
 
 ## Endpoints
 
@@ -248,11 +269,7 @@ creación de la base, así que la restauración funciona aunque `afdb` se haya b
 
 ## Limitaciones conocidas
 
-- `PUT /pedidos/<id>` permite subir el descuento después de los pagos, y el saldo puede quedar negativo.
-- `DELETE /pagos/<id>` permite borrar pagos de un pedido ya entregado, lo que crea deuda sin motivo.
-- `PUT /detalles-pedido/<id>` permite cambiar el precio de una línea ya entregada.
-- Varias líneas de `seed.sql` tienen precios fuera del rango del catálogo: se cargan directo en MySQL,
-  sin pasar por la validación de la API.
 - La búsqueda usa `LIKE '%texto%'`, que no aprovecha índices; es suficiente para el volumen de una
-  sastrería.
-- Todavía no hay interfaz gráfica: la API se usa con curl, REST Client o los scripts de prueba.
+  sastrería. Si creciera mucho, convendría un índice FULLTEXT.
+- `app.py` arranca con `debug=True`, útil en desarrollo; en un uso real debe apagarse.
+- Trabajo futuro: facturación electrónica. La tabla `cliente` ya tiene campos opcionales para ella.
