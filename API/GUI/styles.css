@@ -1,11 +1,11 @@
 /* ===== Fuentes locales (./fonts/, .ttf) ===== */
-@font-face{font-family:"Principal";src:url("./fonts/principal-semibold.ttf") format("truetype");font-weight:600;font-style:normal;font-display:swap}
-@font-face{font-family:"Principal";src:url("./fonts/principal-bold.ttf") format("truetype");font-weight:700;font-style:normal;font-display:swap}
-@font-face{font-family:"Secundaria";src:url("./fonts/secundaria-regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Secundaria";src:url("./fonts/secundaria-italic.ttf") format("truetype");font-weight:400;font-style:italic;font-display:swap}
-@font-face{font-family:"Secundaria";src:url("./fonts/secundaria-medium.ttf") format("truetype");font-weight:500;font-style:normal;font-display:swap}
-@font-face{font-family:"Terciaria";src:url("./fonts/terciaria-regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Terciaria";src:url("./fonts/terciaria-bold.ttf") format("truetype");font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:"Principal";src:url("./fonts/PlayfairDisplay-SemiBold.ttf") format("truetype");font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:"Principal";src:url("./fonts/PlayfairDisplay-Bold.ttf") format("truetype");font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:"Secundaria";src:url("./fonts/CormorantGaramond-Regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Secundaria";src:url("./fonts/CormorantGaramond-Italic.ttf") format("truetype");font-weight:400;font-style:italic;font-display:swap}
+@font-face{font-family:"Secundaria";src:url("./fonts/CormorantGaramond-Medium.ttf") format("truetype");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"Terciaria";src:url("./fonts/Lato-Regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Terciaria";src:url("./fonts/Lato-Bold.ttf") format("truetype");font-weight:700;font-style:normal;font-display:swap}
 
 /* ===== Design tokens: único lugar donde se declaran colores ===== */
 :root{
