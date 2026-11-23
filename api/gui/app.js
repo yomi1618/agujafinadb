@@ -7,7 +7,7 @@ const fdate = s => (s ? String(s).slice(0, 10) : "");
 const hoy = () => new Date().toLocaleDateString("sv-SE");
 const nombre = c => [c.nombre, c.apellido].filter(Boolean).join(" ");
 const app = $("#app"), dlg = $("#modal");
-let draft = null, avisoAbono = null, busqueda = "";
+let draft = null, avisoAbono = null, prefill = "";
 
 /* ---------- API ---------- */
 function setStatus(ok) {
@@ -38,13 +38,17 @@ const REGLAS = {
   ck_cliente_identificacion: "Identificación inválida: cédula de 10 dígitos o RUC de 13, junto con su tipo.",
   ck_cliente_ciudad_direccion: "Si hay dirección, la ciudad es obligatoria.",
   ck_pedido_descuento: "El descuento debe ser 0 o estar entre 5 y 10 %.",
-  ck_pago_monto_positivo: "El monto debe ser mayor que cero."
+  ck_pago_monto_positivo: "El monto debe ser mayor que cero.",
+  ck_precio_servicio_rango: "El precio mínimo debe ser mayor que cero y no mayor que el máximo.",
+  uq_precio_servicio_id_prenda_id_servicio_descripcion_arreglo: "Esa descripción ya existe para esta prenda y servicio.",
+  uq_servicio_nombre_servicio: "Ya existe un servicio con ese nombre.",
+  uq_prenda_tipo_prenda: "Ya existe una prenda con ese nombre."
 };
 function msg(e) {
   const d = e.data || {};
   if (e.status === 409) {
     const k = Object.keys(REGLAS).find(k => (d.detalle || "").includes(k));
-    return k ? REGLAS[k] : (d.detalle || "").includes("foreign key") ? "No se puede completar: hay registros que dependen de este." : (d.error || "Operación no permitida.");
+    return k ? REGLAS[k] : (d.detalle || "").includes("foreign key") ? "No se puede eliminar: está en uso (tiene precios o pedidos asociados)." : (d.error || "Operación no permitida.");
   }
   if (e.status === 400) {
     const x = d.error;
@@ -76,40 +80,137 @@ function modal(titulo, cuerpo, onOk, onOpen) {
   const first = f.querySelector("select,input");
   if (first) first.focus();
 }
-const loading = () => (app.innerHTML = '<div class="skeleton" aria-busy="true"></div>'.repeat(3));
-const fail = e => (app.innerHTML = `<div class="alert danger" role="alert">${esc(msg(e))}</div><a class="btn ghost" href="#/">Volver al Mostrador</a>`);
+const loading = () => { app.onclick = null; app.innerHTML = '<div class="skeleton" aria-busy="true"></div>'.repeat(3); };
+const fail = e => (app.innerHTML = `<div class="alert danger" role="alert">${esc(msg(e))}</div><a class="btn ghost" href="#/">Volver al inicio</a>`);
 const alertaDeuda = d => (Number(d) > 0 ? `<p class="alert warn" role="status"><strong>Deuda:</strong> ${money(d)} por prendas ya entregadas.</p>` : "");
-const ctx = (c, d) => `<div class="ctx"><div><p class="crumbs"><a href="#/">Mostrador</a> / <a href="#/cliente/${c.id_cliente}">Ficha del cliente</a></p><h1>${esc(nombre(c))}</h1><p class="data">${esc(c.telefono)} (${esc(c.tipo_cliente)})</p></div>${alertaDeuda(d)}</div>`;
+const ctx = (c, d) => `<div class="ctx"><div><p class="crumbs"><a href="#/">Inicio</a> / <a href="#/cliente/${c.id_cliente}">Ficha del cliente</a></p><h1>${esc(nombre(c))}</h1><p class="data">${esc(c.telefono)} (${esc(c.tipo_cliente)})</p></div>${alertaDeuda(d)}</div>`;
 async function cargaCliente(id) {
   const [c, d] = await Promise.all([api("/clientes/" + id), api(`/clientes/${id}/deuda`)]);
   return [c, d.saldo_pendiente];
 }
 
-/* ---------- S1 Mostrador ---------- */
-async function mostrador() {
-  app.innerHTML = `<h1>Mostrador</h1><div class="row"><label class="grow"><span class="lbl">Buscar cliente por nombre, apellido o teléfono</span><input id="q" type="search" autocomplete="off" value="${esc(busqueda)}"></label><a class="btn accent" href="#/cliente/nuevo">Nuevo cliente</a></div><div id="res" aria-live="polite"></div>`;
-  const q = $("#q"), res = $("#res");
-  let t;
-  const buscar = async () => {
-    busqueda = q.value.trim();
-    if (!busqueda) { res.innerHTML = '<p class="empty">Escribe un nombre o un teléfono para empezar.</p>'; return; }
-    res.innerHTML = '<div class="skeleton"></div>';
-    try {
-      const l = await api("/clientes/buscar?q=" + encodeURIComponent(busqueda));
-      res.innerHTML = l.length
-        ? `<ul class="list">${l.map(c => `<li><a class="item" href="#/cliente/${c.id_cliente}"><span><strong>${esc(nombre(c))}</strong> <span class="badge">${esc(c.tipo_cliente)}</span></span><span class="data">${esc(c.telefono)}</span>${c.alerta_deuda ? `<span class="badge warn">Debe ${money(c.saldo_pendiente)}</span>` : ""}</a></li>`).join("")}</ul>`
-        : `<div class="empty"><p>No hay clientes con «${esc(busqueda)}».</p><a class="btn" href="#/cliente/nuevo">Registrar nuevo cliente</a></div>`;
-    } catch (e) { res.innerHTML = `<div class="alert danger" role="alert">${esc(msg(e))}</div>`; }
+/* ---------- Buscador global (barra superior) ---------- */
+const bBtn = $("#btn-buscar"), bPan = $("#panel-buscar"), bq = $("#bq"), bres = $("#bres");
+const norm = s => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+/* 0 = el nombre empieza por lo escrito; 1 = una palabra del nombre empieza por eso; -1 = no coincide */
+function rank(c, q) {
+  const t = c.telefono || "";
+  if (/^\d+$/.test(q)) return t.startsWith(q) ? 0 : q.length >= 3 && t.includes(q) ? 1 : -1;
+  const n = norm(nombre(c));
+  return n.startsWith(q) ? 0 : (" " + n).includes(" " + q) ? 1 : -1;
+}
+function panel(abrir, foco = true) {
+  bPan.hidden = !abrir;
+  bBtn.setAttribute("aria-expanded", abrir);
+  if (abrir) { bq.focus(); bq.select(); buscar(); } else if (foco) bBtn.focus();
+}
+async function buscar() {
+  const txt = bq.value.trim(), q = norm(txt);
+  if (!q) { bres.innerHTML = '<p class="muted">Escribe un nombre o un teléfono. Salen primero los que empiezan por lo que escribes.</p>'; return; }
+  bres.innerHTML = '<div class="skeleton"></div>';
+  try {
+    const l = (await api("/clientes/buscar?q=" + encodeURIComponent(txt))).map(c => [rank(c, q), c]).filter(x => x[0] >= 0)
+      .sort((a, b) => a[0] - b[0] || nombre(a[1]).localeCompare(nombre(b[1]), "es")).map(x => x[1]);
+    if (bq.value.trim() !== txt) return; /* llegó tarde: ya se escribió otra cosa */
+    bres.innerHTML = l.length
+      ? `<ul class="list">${l.map(c => `<li><a class="item" href="#/cliente/${c.id_cliente}"><span><strong>${esc(nombre(c))}</strong> <span class="badge">${esc(c.tipo_cliente)}</span></span><span class="data">${esc(c.telefono)}</span>${c.alerta_deuda ? `<span class="badge warn">Debe ${money(c.saldo_pendiente)}</span>` : ""}</a></li>`).join("")}</ul>`
+      : `<div class="empty"><p>No hay clientes con «${esc(txt)}».</p><a class="btn" data-nuevo href="#/cliente/nuevo">Registrar nuevo cliente</a></div>`;
+  } catch (e) { bres.innerHTML = `<div class="alert danger" role="alert">${esc(msg(e))}</div>`; }
+}
+let tBus = 0;
+bBtn.onclick = () => panel(bPan.hidden);
+bq.oninput = () => { clearTimeout(tBus); tBus = setTimeout(buscar, 250); };
+bPan.addEventListener("keydown", e => { if (e.key === "Escape") panel(false); });
+bPan.addEventListener("click", e => { if (e.target.closest("[data-nuevo]")) prefill = bq.value.trim(); if (e.target.closest("a")) panel(false, false); });
+
+/* ---------- Inicio y Catálogo ---------- */
+const plural = (n, u, p) => `${n} ${n === 1 ? u : p || u + "s"}`;
+const rango = l => { if (!l.length) return ""; const mn = Math.min(...l.map(x => +x.precio_minimo)), mx = Math.max(...l.map(x => +x.precio_maximo)); return mn === mx ? money(mn) : `${money(mn)} a ${money(mx)}`; };
+const resumen = t => `<p class="alert info" role="status">${t}</p>`;
+const ok = (t, fn) => async f => { await fn(f); toast(t); route(); };
+const porNombre = (a, b) => a.localeCompare(b, "es");
+
+async function inicio() {
+  const [pr, sv, ps, d] = await Promise.all([api("/prendas"), api("/servicios"), api("/precios-servicio"), api("/clientes/con-deuda")]);
+  const tot = d.reduce((s, x) => s + Number(x.saldo_pendiente), 0);
+  app.innerHTML = `<h1>Inicio</h1><div class="cards"><a class="tile" href="#/catalogo"><h2>Catálogo</h2><p>${plural(pr.length, "prenda")}, ${plural(sv.length, "servicio")} y ${plural(ps.length, "precio")}.</p></a><a class="tile" href="#/saldos"><h2>Saldos pendientes</h2><p>${d.length ? `${plural(d.length, "cliente")} con deuda, ${money(tot)} en total.` : "Ningún cliente tiene deuda ahora."}</p></a></div><p class="muted">Para atender a alguien usa «Buscar» en la barra superior.</p>`;
+}
+
+/* ---------- Catálogo en cascada: prendas > servicios > descripciones ---------- */
+function nombreModal(titulo, valor, ayuda, fn) {
+  modal(titulo, `${ayuda ? `<p class="muted">${ayuda}</p>` : ""}<label><span class="lbl">Nombre</span><input name="n" maxlength="80" value="${esc(valor)}"></label>`,
+    ok("Guardado.", async f => { const n = f.n.value.trim(); if (!n) throw { message: "Escribe un nombre." }; await fn(n); }));
+}
+async function borrar(url, que) {
+  if (!confirm(`¿Eliminar ${que}?`)) return;
+  try { await api(url, "DELETE"); toast("Eliminado."); route(); } catch (e) { toast(msg(e), "err"); }
+}
+const camposPrecio = (d = {}) => `<label><span class="lbl">Descripción</span><input name="d" maxlength="120" value="${esc(d.descripcion_arreglo)}"></label><div class="grid12"><label class="c6"><span class="lbl">Precio mínimo</span><input name="mn" type="number" step="0.01" min="0.01" value="${d.precio_minimo ?? ""}"></label><label class="c6"><span class="lbl">Precio máximo</span><input name="mx" type="number" step="0.01" min="0.01" value="${d.precio_maximo ?? ""}"></label></div>`;
+function leerPrecio(f) {
+  const d = f.d.value.trim(), mn = Number(f.mn.value), mx = Number(f.mx.value);
+  if (!d) throw { message: "Escribe la descripción." };
+  if (!(mn > 0) || mx < mn) throw { message: "El mínimo debe ser mayor que cero y no mayor que el máximo." };
+  return { descripcion_arreglo: d, precio_minimo: mn, precio_maximo: mx };
+}
+
+async function catalogo() {
+  const [pr, sv, ps] = await Promise.all([api("/prendas"), api("/servicios"), api("/precios-servicio")]);
+  pr.sort((a, b) => porNombre(a.tipo_prenda, b.tipo_prenda));
+  app.innerHTML = `<p class="crumbs"><a href="#/">Inicio</a> / Catálogo</p><div class="row"><h1 class="grow">Catálogo</h1><button class="btn accent" data-a="nueva" type="button">Nueva prenda</button></div>` +
+    resumen(`Hay ${plural(pr.length, "prenda")}, ${plural(sv.length, "servicio")} y ${plural(ps.length, "precio")}.`) +
+    (pr.length ? `<ul class="list">${pr.map(p => { const l = ps.filter(x => x.id_prenda === p.id_prenda); return `<li class="item"><a class="grow" href="#/catalogo/${p.id_prenda}"><strong>${esc(p.tipo_prenda)}</strong><br><span class="muted">${plural(new Set(l.map(x => x.id_servicio)).size, "servicio")}, ${plural(l.length, "descripción", "descripciones")}</span></a><button class="btn ghost" data-a="ren" data-i="${p.id_prenda}" type="button">Renombrar</button><button class="btn ghost" data-a="del" data-i="${p.id_prenda}" type="button">Eliminar</button></li>`; }).join("")}</ul>` : '<p class="empty">Todavía no hay prendas. Agrega la primera.</p>');
+  app.onclick = ev => {
+    const b = ev.target.closest("[data-a]"); if (!b) return;
+    const id = +b.dataset.i, p = pr.find(x => x.id_prenda === id);
+    if (b.dataset.a === "nueva") nombreModal("Nueva prenda", "", "", n => api("/prendas", "POST", { tipo_prenda: n }));
+    else if (b.dataset.a === "ren") nombreModal("Renombrar prenda", p.tipo_prenda, "", n => api("/prendas/" + id, "PUT", { tipo_prenda: n }));
+    else borrar("/prendas/" + id, `la prenda «${p.tipo_prenda}»`);
   };
-  q.oninput = () => { clearTimeout(t); t = setTimeout(buscar, 300); };
-  q.focus();
-  buscar();
+}
+
+async function catalogoPrenda(id) {
+  const [p, sv, ps] = await Promise.all([api("/prendas/" + id), api("/servicios"), api("/precios-servicio?id_prenda=" + id)]);
+  const nom = Object.fromEntries(sv.map(s => [s.id_servicio, s.nombre_servicio]));
+  const ids = [...new Set(ps.map(x => x.id_servicio))].sort((a, b) => porNombre(nom[a], nom[b]));
+  app.innerHTML = `<p class="crumbs"><a href="#/">Inicio</a> / <a href="#/catalogo">Catálogo</a> / ${esc(p.tipo_prenda)}</p><div class="row"><h1 class="grow">${esc(p.tipo_prenda)}</h1><button class="btn accent" data-a="add" type="button">Agregar servicio</button></div>` +
+    resumen(`${plural(ids.length, "servicio")} y ${plural(ps.length, "descripción", "descripciones")}${ps.length ? `, con precios de ${rango(ps)}` : ""}.`) +
+    (ids.length ? `<ul class="list">${ids.map(s => { const l = ps.filter(x => x.id_servicio === s); return `<li><a class="item" href="#/catalogo/${id}/${s}"><span><strong>${esc(nom[s])}</strong><br><span class="muted">${plural(l.length, "descripción", "descripciones")}</span></span><span class="data">${rango(l)}</span></a></li>`; }).join("")}</ul>` : '<p class="empty">Esta prenda todavía no tiene servicios. Agrega el primero.</p>');
+  app.onclick = ev => {
+    if (!ev.target.closest("[data-a]")) return;
+    const libres = sv.filter(s => !ids.includes(s.id_servicio)).sort((a, b) => porNombre(a.nombre_servicio, b.nombre_servicio));
+    modal("Agregar servicio a " + p.tipo_prenda,
+      `<label><span class="lbl">Servicio</span><select name="s">${libres.map(s => `<option value="${s.id_servicio}">${esc(s.nombre_servicio)}</option>`).join("")}<option value="">Servicio nuevo…</option></select></label><label id="wn"><span class="lbl">Nombre del servicio nuevo</span><input name="n" maxlength="80"></label>` + camposPrecio(),
+      ok("Servicio agregado.", async f => {
+        const pr = leerPrecio(f); let sid = Number(f.s.value);
+        if (!sid) { const n = f.n.value.trim(); if (!n) throw { message: "Escribe el nombre del servicio." }; sid = (await api("/servicios", "POST", { nombre_servicio: n })).id_servicio; }
+        await api("/precios-servicio", "POST", { id_prenda: id, id_servicio: sid, ...pr });
+      }),
+      f => { const t = () => { $("#wn").hidden = !!f.s.value; }; f.s.onchange = t; t(); });
+  };
+}
+
+async function catalogoServicio(id, sid) {
+  const [p, s, ps] = await Promise.all([api("/prendas/" + id), api("/servicios/" + sid), api(`/precios-servicio?id_prenda=${id}&id_servicio=${sid}`)]);
+  ps.sort((a, b) => porNombre(a.descripcion_arreglo, b.descripcion_arreglo));
+  app.innerHTML = `<p class="crumbs"><a href="#/">Inicio</a> / <a href="#/catalogo">Catálogo</a> / <a href="#/catalogo/${id}">${esc(p.tipo_prenda)}</a> / ${esc(s.nombre_servicio)}</p><div class="row"><h1 class="grow">${esc(s.nombre_servicio)} en ${esc(p.tipo_prenda)}</h1><button class="btn ghost" data-a="ren" type="button">Renombrar servicio</button><button class="btn accent" data-a="add" type="button">Agregar descripción</button></div>` +
+    resumen(ps.length ? `${plural(ps.length, "descripción", "descripciones")}, con precios de ${rango(ps)}.` : "Este servicio ya no tiene descripciones en esta prenda.") +
+    (ps.length ? `<div class="tbl"><table><thead><tr><th>Descripción</th><th>Mínimo</th><th>Máximo</th><th></th></tr></thead><tbody>${ps.map(x => `<tr><td>${esc(x.descripcion_arreglo)}</td><td class="num">${money(x.precio_minimo)}</td><td class="num">${money(x.precio_maximo)}</td><td><button class="btn ghost" data-a="edit" data-i="${x.id_precio}" type="button">Editar</button> <button class="btn ghost" data-a="del" data-i="${x.id_precio}" type="button">Eliminar</button></td></tr>`).join("")}</tbody></table></div>` : "");
+  app.onclick = ev => {
+    const b = ev.target.closest("[data-a]"); if (!b) return;
+    const x = ps.find(y => y.id_precio === +b.dataset.i);
+    if (b.dataset.a === "add") modal("Agregar descripción", camposPrecio(), ok("Descripción agregada.", f => api("/precios-servicio", "POST", { id_prenda: id, id_servicio: sid, ...leerPrecio(f) })));
+    else if (b.dataset.a === "edit") modal("Editar descripción", camposPrecio(x), ok("Cambios guardados.", f => api("/precios-servicio/" + x.id_precio, "PUT", leerPrecio(f))));
+    else if (b.dataset.a === "del") borrar("/precios-servicio/" + x.id_precio, `la descripción «${x.descripcion_arreglo}»`);
+    else nombreModal("Renombrar servicio", s.nombre_servicio, "El cambio se aplica en todas las prendas que usan este servicio.", n => api("/servicios/" + sid, "PUT", { nombre_servicio: n }));
+  };
 }
 
 /* ---------- S2 Cliente nuevo ---------- */
-async function clienteNuevo() {
-  const esTel = /^\d/.test(busqueda) ? busqueda : "", nom = esTel ? "" : busqueda;
-  app.innerHTML = `<h1>Cliente nuevo</h1><form id="f" class="grid12" novalidate>
+async function clienteForm(id) {
+  const edit = Number.isInteger(id), base = edit ? await api("/clientes/" + id) : {};
+  const pre = prefill; prefill = "";
+  const esTel = /^\d/.test(pre) ? pre : "", nom = esTel ? "" : pre;
+  app.innerHTML = `<h1>${edit ? "Editar cliente" : "Cliente nuevo"}</h1><form id="f" class="grid12" novalidate>
   <label class="c3"><span class="lbl">Tipo *</span><select name="tipo_cliente"><option value="persona">Persona</option><option value="empresa">Empresa</option></select></label>
   <label class="c6"><span class="lbl" id="l-nom">Nombre *</span><input name="nombre" value="${esc(nom)}"></label>
   <label class="c3" id="w-ap"><span class="lbl">Apellido *</span><input name="apellido"></label>
@@ -120,8 +221,9 @@ async function clienteNuevo() {
   <label class="c6"><span class="lbl">Dirección</span><input name="direccion"></label>
   <label class="c6"><span class="lbl">Ciudad</span><input name="ciudad"></label>
   <div id="dup" class="c12" aria-live="polite"></div><p class="form-error c12" role="alert"></p>
-  <div class="c12 row end"><a class="btn ghost" href="#/">Cancelar</a><button class="btn accent">Guardar cliente</button></div></form>`;
+  <div class="c12 row end"><a class="btn ghost" href="${edit ? "#/cliente/" + id : "#/"}">Cancelar</a><button class="btn accent">Guardar cliente</button></div></form>`;
   const f = $("#f"), dup = $("#dup"), er = $(".form-error");
+  if (edit) Object.entries(base).forEach(([k, v]) => { if (f[k] && v != null && k !== "fecha_registro") f[k].value = v; });
   let bloq = false;
   const tipo = () => {
     const per = f.tipo_cliente.value === "persona";
@@ -134,7 +236,7 @@ async function clienteNuevo() {
     dup.innerHTML = ""; bloq = false;
     if (!tel) return;
     try {
-      const l = (await api("/clientes/buscar?q=" + encodeURIComponent(tel))).filter(c => c.telefono === tel);
+      const l = (await api("/clientes/buscar?q=" + encodeURIComponent(tel))).filter(c => c.telefono === tel && c.id_cliente !== id);
       const mismo = l.find(c => c.tipo_cliente === f.tipo_cliente.value), otro = l.find(c => c !== mismo);
       if (mismo) { bloq = true; dup.innerHTML = `<p class="alert danger">Ya existe ${esc(nombre(mismo))} con este teléfono. <a href="#/cliente/${mismo.id_cliente}">Abrir ficha</a></p>`; }
       else if (otro) dup.innerHTML = `<p class="alert info">Ya existe ${esc(nombre(otro))} (${esc(otro.tipo_cliente)}) con este teléfono${otro.alerta_deuda ? ` y debe ${money(otro.saldo_pendiente)}` : ""}. Puedes continuar.</p>`;
@@ -147,13 +249,13 @@ async function clienteNuevo() {
     ev.preventDefault();
     er.textContent = "";
     const v = Object.fromEntries(new FormData(f).entries());
-    Object.keys(v).forEach(k => { v[k] = v[k].trim(); if (!v[k]) delete v[k]; });
+    Object.keys(v).forEach(k => { v[k] = v[k].trim(); if (!v[k]) { if (edit) v[k] = null; else delete v[k]; } });
     const per = v.tipo_cliente === "persona";
     const falta = !v.nombre ? "El nombre es obligatorio." : !v.telefono ? "El teléfono es obligatorio." : per && !v.apellido ? "El apellido es obligatorio para personas."
       : !!v.tipo_identificacion !== !!v.numero_identificacion ? "Indica tipo y número de identificación, o ninguno." : v.direccion && !v.ciudad ? "Si hay dirección, indica la ciudad." : "";
     if (falta) { er.textContent = falta; return; }
     if (bloq) { er.textContent = "Ya existe un cliente de este tipo con ese teléfono."; return; }
-    try { const c = await api("/clientes", "POST", v); toast("Cliente guardado."); location.hash = "#/cliente/" + c.id_cliente; }
+    try { const c = await api(edit ? "/clientes/" + id : "/clientes", edit ? "PUT" : "POST", v); toast("Cliente guardado."); location.hash = "#/cliente/" + c.id_cliente; }
     catch (e) { er.textContent = msg(e); }
   };
 }
@@ -164,7 +266,7 @@ async function ficha(id) {
   const fechas = Object.fromEntries(peds.map(p => [p.id_pedido, fdate(p.fecha_hora_recepcion)]));
   const lin = await Promise.all(act.map(p => api(`/pedidos/${p.id_pedido}/lineas`)));
   const card = (p, l) => `<li><a class="item" href="#/pedido/${p.id_pedido}"><span><strong>Pedido #${p.id_pedido}</strong> <span class="badge ${p.estado === "entregado" ? "ok" : ""}">${esc(p.estado)}</span>${l ? `<br><span class="muted">${esc(l.map(x => `${x.tipo_prenda}: ${x.descripcion_arreglo}`).join("; "))}</span>` : ""}</span><span class="data">${fechas[p.id_pedido] || ""}<br>${p.lineas_entregadas}/${p.lineas_total} entregadas</span><span class="data">Total ${money(p.total_neto)}<br>Pagado ${money(p.monto_pagado)}<br>Saldo ${money(p.saldo_total_pendiente)}</span></a></li>`;
-  app.innerHTML = ctx(c, d.saldo_pendiente) + `<div class="row"><a class="btn accent" href="#/cliente/${id}/pedido-nuevo">Nuevo pedido</a></div><h2>Pedidos activos</h2>` +
+  app.innerHTML = ctx(c, d.saldo_pendiente) + `<div class="row"><a class="btn accent" href="#/cliente/${id}/pedido-nuevo">Nuevo pedido</a><a class="btn ghost" href="#/cliente/${id}/editar">Editar cliente</a></div><h2>Pedidos activos</h2>` +
     (act.length ? `<ul class="list">${act.map((p, i) => card(p, lin[i])).join("")}</ul>` : '<p class="empty">Este cliente no tiene pedidos activos.</p>') +
     `<details id="hist"><summary>Pedidos entregados</summary><div id="hist-body"></div></details>`;
   let cargado = false;
@@ -350,7 +452,7 @@ async function saldos() {
 }
 
 /* ---------- Rutas ---------- */
-const rutas = [[/^#\/$/, mostrador], [/^#\/cliente\/nuevo$/, clienteNuevo], [/^#\/cliente\/(\d+)$/, ficha], [/^#\/cliente\/(\d+)\/pedido-nuevo$/, pedidoNuevo],
+const rutas = [[/^#\/$/, inicio], [/^#\/catalogo$/, catalogo], [/^#\/catalogo\/(\d+)$/, catalogoPrenda], [/^#\/catalogo\/(\d+)\/(\d+)$/, catalogoServicio], [/^#\/cliente\/nuevo$/, clienteForm], [/^#\/cliente\/(\d+)\/editar$/, clienteForm], [/^#\/cliente\/(\d+)$/, ficha], [/^#\/cliente\/(\d+)\/pedido-nuevo$/, pedidoNuevo],
   [/^#\/pedido\/(\d+)$/, pedido], [/^#\/pedido\/(\d+)\/entrega$/, entrega], [/^#\/saldos$/, saldos]];
 async function route() {
   const h = location.hash || "#/";
@@ -358,7 +460,7 @@ async function route() {
   for (const [re, fn] of rutas) {
     const m = h.match(re);
     if (!m) continue;
-    document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === (h === "#/saldos" ? "#/saldos" : "#/")));
+    document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === (h.startsWith("#/catalogo") ? "#/catalogo" : h === "#/saldos" ? "#/saldos" : "#/")));
     loading();
     try { await fn(...m.slice(1).map(Number)); } catch (e) { fail(e); }
     return;
