@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='gui', static_url_path='/gui')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = URL.create(
     drivername='mysql+pymysql',
@@ -484,6 +484,10 @@ def lineas_pedido(id_pedido):
         f['usa_repuesto'] = bool(f['usa_repuesto'])
         f['fecha_entrega_estimada'] = f['fecha_entrega_estimada'].isoformat()
     return jsonify(filas)
+
+@app.route('/')
+def inicio():
+    return app.send_static_file('index.html')
 
 if __name__ == '__main__':
     app.run(debug=True, port=int(os.environ.get('PORT', 5000)))
