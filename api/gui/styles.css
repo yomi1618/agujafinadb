@@ -1,11 +1,11 @@
 /* ===== Fuentes locales (./fonts/, .ttf) ===== */
-@font-face{font-family:"Principal";src:url("./fonts/principal-semibold.ttf") format("truetype");font-weight:600;font-style:normal;font-display:swap}
-@font-face{font-family:"Principal";src:url("./fonts/principal-bold.ttf") format("truetype");font-weight:700;font-style:normal;font-display:swap}
-@font-face{font-family:"Secundaria";src:url("./fonts/secundaria-regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Secundaria";src:url("./fonts/secundaria-italic.ttf") format("truetype");font-weight:400;font-style:italic;font-display:swap}
-@font-face{font-family:"Secundaria";src:url("./fonts/secundaria-medium.ttf") format("truetype");font-weight:500;font-style:normal;font-display:swap}
-@font-face{font-family:"Terciaria";src:url("./fonts/terciaria-regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Terciaria";src:url("./fonts/terciaria-bold.ttf") format("truetype");font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:"Principal";src:url("./fonts/PlayfairDisplay-SemiBold.ttf") format("truetype");font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:"Principal";src:url("./fonts/PlayfairDisplay-Bold.ttf") format("truetype");font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:"Secundaria";src:url("./fonts/CormorantGaramond-Regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Secundaria";src:url("./fonts/CormorantGaramond-Italic.ttf") format("truetype");font-weight:400;font-style:italic;font-display:swap}
+@font-face{font-family:"Secundaria";src:url("./fonts/CormorantGaramond-Medium.ttf") format("truetype");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"Terciaria";src:url("./fonts/Lato-Regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Terciaria";src:url("./fonts/Lato-Bold.ttf") format("truetype");font-weight:700;font-style:normal;font-display:swap}
 
 /* ===== Design tokens: único lugar donde se declaran colores ===== */
 :root{
@@ -157,3 +157,16 @@ dialog::backdrop{background:var(--color-overlay)}
 .mt{margin-top:var(--sp-6)}
 .full{width:100%}
 .plain{border:0;padding:0;margin:0}
+
+/* ===== Buscador global e Inicio ===== */
+.iconbtn{display:inline-flex;align-items:center;gap:var(--sp-3);min-height:var(--hit);padding:var(--sp-3) var(--sp-5);font:500 var(--fs-body)/1 var(--font-body);color:var(--color-on-dark);background:transparent;border:var(--sp-1) solid var(--color-on-dark);border-radius:var(--radius);cursor:pointer}
+.iconbtn:hover,.iconbtn[aria-expanded=true]{background:var(--color-accent);color:var(--color-on-accent);border-color:var(--color-accent)}
+.iconbtn svg{width:var(--sp-6);height:var(--sp-6);fill:none;stroke:currentColor;stroke-width:2}
+.searchpanel{background:var(--color-surface);border-bottom:var(--sp-2) solid var(--color-accent);padding:var(--sp-6) var(--sp-7)}
+.searchbox{max-width:var(--max-w);margin:0 auto;max-height:61.8vh;overflow:auto}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-8);margin-bottom:var(--sp-6)}
+.tile{display:block;padding:var(--sp-8);min-height:calc(var(--sp-9) * 3);color:inherit;text-decoration:none;border:var(--sp-1) solid var(--color-ink);border-radius:var(--radius)}
+.tile h2{margin-bottom:var(--sp-4)}
+a.tile:hover{background:var(--color-accent)}
+.tile.off{color:var(--color-muted);border-color:var(--color-border);background:var(--color-surface)}
+@media (max-width:900px){.cards{grid-template-columns:1fr}}
